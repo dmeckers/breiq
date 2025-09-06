@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "breiq-docs": {
+      "command": "npx",
+      "args": ["@anthropic-ai/mcp-server-filesystem", "/Users/dmitrijsmeckers/Downloads/zaeb/breiq"],
+      "env": {
+        "ALLOWED_EXTENSIONS": ".md,.json,.yml,.yaml,.tf,.js,.ts,.py,.sql,.sh,.txt"
+      }
+    }
+  }
+}

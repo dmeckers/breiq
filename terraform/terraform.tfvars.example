@@ -1,0 +1,53 @@
+# ====================================
+# BREIQ TERRAFORM VARIABLES EXAMPLE
+# Copy this file to terraform.tfvars and customize
+# ====================================
+
+# Basic Configuration
+aws_region   = "us-east-1"
+environment  = "production"
+project_name = "breiq"
+domain_name  = "breiq.online"
+
+# Performance Settings
+enable_multi_region = true
+
+# CORS Origins for Video Access
+video_bucket_cors_origins = [
+  "https://breiq.online",
+  "https://www.breiq.online", 
+  "https://app.breiq.online",
+  "https://admin.breiq.online"
+]
+
+# ====================================
+# ADVANCED CONFIGURATION
+# Uncomment and customize as needed
+# ====================================
+
+# Custom VPC CIDR (optional)
+# vpc_cidr = "10.0.0.0/16"
+
+# Database Configuration
+# rds_instance_class = "db.r6g.xlarge"  # For production
+# rds_backup_retention = 30
+# enable_rds_multi_az = true
+
+# Cache Configuration  
+# redis_node_type = "cache.r6g.xlarge"  # For production
+# redis_num_nodes = 3
+
+# Video Processing
+# enable_video_transcoding = true
+# video_quality_profiles = ["480p", "720p", "1080p"]
+
+# SSL Certificate (if using custom domain)
+# ssl_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+
+# Monitoring and Alerts
+# enable_enhanced_monitoring = true
+# alert_email = "admin@breiq.online"
+
+# Cost Optimization
+# enable_spot_instances = true
+# enable_s3_lifecycle_policies = true

@@ -1,0 +1,359 @@
+name: 'Application Deployment'
+
+on:
+  workflow_run:
+    workflows: ["Terraform Infrastructure Deployment"]
+    types:
+      - completed
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      image_tag:
+        description: 'Docker image tag to deploy'
+        required: true
+        default: 'latest'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: 'us-east-1'
+  ECR_REPOSITORY: 'breiq-app'
+
+jobs:
+  build-and-push:
+    name: 'Build and Push Docker Images'
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+    
+    outputs:
+      image-tag: ${{ steps.build.outputs.image-tag }}
+      
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        
+      - name: Build and Push Backend Image
+        id: build
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build backend image
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY-backend:$IMAGE_TAG ./breiq-backend
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY-backend:$IMAGE_TAG
+          
+          # Tag as latest for the branch
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY-backend:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY-backend:${{ github.ref_name }}
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY-backend:${{ github.ref_name }}
+          
+          echo "image-tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          
+      - name: Build and Push Frontend Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build frontend image
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY-frontend:$IMAGE_TAG ./breiq
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY-frontend:$IMAGE_TAG
+          
+          # Tag as latest for the branch
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY-frontend:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY-frontend:${{ github.ref_name }}
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY-frontend:${{ github.ref_name }}
+
+  deploy-staging:
+    name: 'Deploy to Staging'
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/develop'
+    
+    environment: staging
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Update ECS Service
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        run: |
+          # Update backend service
+          aws ecs update-service \
+            --cluster breiq-staging-cluster \
+            --service breiq-staging-backend \
+            --task-definition $(aws ecs describe-task-definition \
+              --task-definition breiq-staging-backend \
+              --query 'taskDefinition.family' --output text):$(aws ecs describe-task-definition \
+              --task-definition breiq-staging-backend \
+              --query 'taskDefinition.revision' --output text) \
+            --force-new-deployment
+            
+          # Update frontend service
+          aws ecs update-service \
+            --cluster breiq-staging-cluster \
+            --service breiq-staging-frontend \
+            --task-definition $(aws ecs describe-task-definition \
+              --task-definition breiq-staging-frontend \
+              --query 'taskDefinition.family' --output text):$(aws ecs describe-task-definition \
+              --task-definition breiq-staging-frontend \
+              --query 'taskDefinition.revision' --output text) \
+            --force-new-deployment
+            
+      - name: Wait for Deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster breiq-staging-cluster \
+            --services breiq-staging-backend breiq-staging-frontend
+            
+      - name: Run Health Checks
+        run: |
+          # Get ALB endpoint
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names breiq-staging-alb \
+            --query 'LoadBalancers[0].DNSName' --output text)
+            
+          # Health check endpoints
+          echo "Testing staging deployment at: https://$ALB_DNS"
+          
+          for endpoint in "/api/health" "/api/v1/status"; do
+            echo "Testing $endpoint..."
+            if curl -f -s "https://$ALB_DNS$endpoint" > /dev/null; then
+              echo "✅ $endpoint is healthy"
+            else
+              echo "❌ $endpoint failed health check"
+              exit 1
+            fi
+          done
+
+  deploy-production:
+    name: 'Deploy to Production'
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    
+    environment: production
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Blue-Green Deployment Strategy
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image-tag }}
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        run: |
+          # Create new task definitions with updated images
+          BACKEND_TASK_DEF=$(aws ecs describe-task-definition --task-definition breiq-production-backend)
+          FRONTEND_TASK_DEF=$(aws ecs describe-task-definition --task-definition breiq-production-frontend)
+          
+          # Update backend image
+          NEW_BACKEND_TASK_DEF=$(echo $BACKEND_TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/$ECR_REPOSITORY-backend:$IMAGE_TAG" \
+            '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.placementConstraints) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)')
+            
+          # Update frontend image
+          NEW_FRONTEND_TASK_DEF=$(echo $FRONTEND_TASK_DEF | jq --arg IMAGE "$ECR_REGISTRY/$ECR_REPOSITORY-frontend:$IMAGE_TAG" \
+            '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.placementConstraints) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)')
+          
+          # Register new task definitions
+          echo $NEW_BACKEND_TASK_DEF > backend-task-def.json
+          echo $NEW_FRONTEND_TASK_DEF > frontend-task-def.json
+          
+          aws ecs register-task-definition --cli-input-json file://backend-task-def.json
+          aws ecs register-task-definition --cli-input-json file://frontend-task-def.json
+          
+      - name: Update Production Services
+        run: |
+          # Update services with new task definitions
+          aws ecs update-service \
+            --cluster breiq-production-cluster \
+            --service breiq-production-backend \
+            --force-new-deployment
+            
+          aws ecs update-service \
+            --cluster breiq-production-cluster \
+            --service breiq-production-frontend \
+            --force-new-deployment
+            
+      - name: Wait for Deployment
+        run: |
+          echo "Waiting for production deployment to complete..."
+          aws ecs wait services-stable \
+            --cluster breiq-production-cluster \
+            --services breiq-production-backend breiq-production-frontend
+            
+      - name: Comprehensive Health Checks
+        run: |
+          # Get production ALB endpoint
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names breiq-production-alb \
+            --query 'LoadBalancers[0].DNSName' --output text)
+          
+          # Health check endpoints
+          ENDPOINTS=(
+            "/api/health"
+            "/api/v1/status"
+            "/api/v1/videos/health"
+            "/api/v1/users/health"
+          )
+          
+          echo "Running comprehensive health checks..."
+          
+          for endpoint in "${ENDPOINTS[@]}"; do
+            echo "Testing $endpoint..."
+            for i in {1..5}; do
+              if curl -f -s "https://$ALB_DNS$endpoint" > /dev/null; then
+                echo "✅ $endpoint is healthy"
+                break
+              else
+                echo "⏳ Attempt $i/5 failed, retrying..."
+                sleep 10
+              fi
+              
+              if [ $i -eq 5 ]; then
+                echo "❌ $endpoint failed health check after 5 attempts"
+                exit 1
+              fi
+            done
+          done
+          
+          echo "🎉 All health checks passed! Production deployment successful!"
+
+  rollback:
+    name: 'Rollback on Failure'
+    runs-on: ubuntu-latest
+    if: failure()
+    needs: [deploy-staging, deploy-production]
+    
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Rollback Services
+        run: |
+          ENVIRONMENT="staging"
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            ENVIRONMENT="production"
+          fi
+          
+          echo "Rolling back $ENVIRONMENT environment..."
+          
+          # Get previous task definition revisions
+          BACKEND_PREV_REV=$(aws ecs list-task-definitions \
+            --family-prefix breiq-$ENVIRONMENT-backend \
+            --status ACTIVE --sort DESC \
+            --query 'taskDefinitionArns[1]' --output text)
+            
+          FRONTEND_PREV_REV=$(aws ecs list-task-definitions \
+            --family-prefix breiq-$ENVIRONMENT-frontend \
+            --status ACTIVE --sort DESC \
+            --query 'taskDefinitionArns[1]' --output text)
+          
+          # Update services to previous revision
+          if [ "$BACKEND_PREV_REV" != "None" ]; then
+            aws ecs update-service \
+              --cluster breiq-$ENVIRONMENT-cluster \
+              --service breiq-$ENVIRONMENT-backend \
+              --task-definition $BACKEND_PREV_REV
+          fi
+          
+          if [ "$FRONTEND_PREV_REV" != "None" ]; then
+            aws ecs update-service \
+              --cluster breiq-$ENVIRONMENT-cluster \
+              --service breiq-$ENVIRONMENT-frontend \
+              --task-definition $FRONTEND_PREV_REV
+          fi
+          
+          echo "Rollback initiated for $ENVIRONMENT"
+
+  notify-deployment:
+    name: 'Notify Team'
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always()
+    
+    steps:
+      - name: Determine Environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "emoji=🚀" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT  
+            echo "emoji=🧪" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Notify Success
+        if: needs.deploy-staging.result == 'success' || needs.deploy-production.result == 'success'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          text: |
+            ${{ steps.env.outputs.emoji }} **Breiq Application Deployed Successfully!**
+            
+            • **Environment**: ${{ steps.env.outputs.environment }}
+            • **Image Tag**: ${{ needs.build-and-push.outputs.image-tag }}
+            • **Branch**: ${{ github.ref_name }}
+            • **Actor**: @${{ github.actor }}
+            
+            The video platform is ready to handle Instagram-level traffic! 🎬✨
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          
+      - name: Notify Failure
+        if: needs.deploy-staging.result == 'failure' || needs.deploy-production.result == 'failure'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: |
+            ❌ **Breiq Application Deployment Failed!**
+            
+            • **Environment**: ${{ steps.env.outputs.environment }}
+            • **Branch**: ${{ github.ref_name }}
+            • **Actor**: @${{ github.actor }}
+            
+            Rollback has been initiated. Please check logs and investigate.
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
