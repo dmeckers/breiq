@@ -480,7 +480,64 @@ resource "aws_ecs_task_definition" "main" {
         }
       ]
       
-      environment = []
+      environment = [
+        {
+          name  = "APP_NAME"
+          value = "Breiq API"
+        },
+        {
+          name  = "APP_ENV"
+          value = "production"
+        },
+        {
+          name  = "APP_DEBUG" 
+          value = "false"
+        },
+        {
+          name  = "APP_KEY"
+          value = "base64:fplxeYPG/hmbwKB+N2R+JXAzKxmNCTPlZYdQOUoQHY8="
+        },
+        {
+          name  = "DB_CONNECTION"
+          value = "pgsql"
+        },
+        {
+          name  = "DB_HOST"
+          value = aws_db_instance.main.address
+        },
+        {
+          name  = "DB_PORT"
+          value = "5432"
+        },
+        {
+          name  = "DB_DATABASE"
+          value = aws_db_instance.main.db_name
+        },
+        {
+          name  = "DB_USERNAME"
+          value = aws_db_instance.main.username
+        },
+        {
+          name  = "DB_PASSWORD"
+          value = aws_db_instance.main.password
+        },
+        {
+          name  = "CACHE_STORE"
+          value = "redis"
+        },
+        {
+          name  = "REDIS_HOST"
+          value = aws_elasticache_cluster.main.cache_nodes[0].address
+        },
+        {
+          name  = "REDIS_PORT"
+          value = "6379"
+        },
+        {
+          name  = "LOG_CHANNEL"
+          value = "errorlog"
+        }
+      ]
       
       logConfiguration = {
         logDriver = "awslogs"
