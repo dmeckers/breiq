@@ -134,6 +134,9 @@ jobs:
         cat > Dockerfile << 'EOF'
         FROM webdevops/php-nginx:8.2-alpine
 
+        # Set document root for Laravel
+        ENV WEB_DOCUMENT_ROOT=/app/public
+
         # Set working directory
         WORKDIR /app
 
@@ -143,7 +146,10 @@ jobs:
         # Install composer dependencies
         RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-        # No blocking startup script - let Laravel start normally
+        # Laravel optimizations
+        RUN php artisan config:cache || true && \
+            php artisan route:cache || true && \
+            php artisan view:cache || true
 
         EXPOSE 80
         EOF
