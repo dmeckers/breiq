@@ -6,15 +6,41 @@ This repository uses GitHub Actions for automated deployment to AWS ECS.
 
 ### 🔧 Setup GitHub Secrets
 
-Go to your GitHub repository settings and add these secrets:
+Go to your GitHub repository Settings → Secrets and variables → Actions → New repository secret.
 
-**AWS Credentials:**
+Add ALL of these secrets (case-sensitive):
+
+**AWS Deployment:**
 1. **AWS_ACCESS_KEY_ID**: Your AWS access key
 2. **AWS_SECRET_ACCESS_KEY**: Your AWS secret access key
+3. **AWS_ACCOUNT_ID**: Your 12-digit AWS account ID
+
+**Laravel Application:**
+4. **APP_KEY**: Laravel app key (generate with: `php artisan key:generate --show`)
+5. **APP_URL**: Your ALB DNS (e.g., `http://breiq-production-alb-123456789.us-east-1.elb.amazonaws.com`)
+
+**Database (from Terraform outputs):**
+6. **DB_HOST**: RDS PostgreSQL endpoint
+7. **DB_PASSWORD**: Database password you set
+
+**Cache (from Terraform outputs):**
+8. **REDIS_HOST**: ElastiCache Redis endpoint
+
+**Google OAuth (from your existing app):**
+9. **GOOGLE_CLIENT_ID**: Your Google OAuth client ID
+10. **GOOGLE_CLIENT_SECRET**: Your Google OAuth client secret
+
+**Firebase (from your existing app):**
+11. **FCM_SERVER_KEY**: Firebase Cloud Messaging server key
+12. **FCM_SENDER_ID**: Firebase Cloud Messaging sender ID
 
 **Telegram Notifications:**
-3. **TELEGRAM_TO**: Your Telegram chat ID (get from @userinfobot)
-4. **TELEGRAM_TOKEN**: Your Telegram bot token (get from @BotFather)
+13. **TELEGRAM_TO**: Your Telegram chat ID (get from @userinfobot)
+14. **TELEGRAM_TOKEN**: Your Telegram bot token (get from @BotFather)
+
+**Optional:**
+15. **CLOUDFRONT_URL**: CloudFront distribution URL (if using CDN)
+16. **SENTRY_LARAVEL_DSN**: Sentry DSN for error tracking (if using Sentry)
 
 ### 📝 Getting AWS Credentials
 

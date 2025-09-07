@@ -55,6 +55,100 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
 
+    - name: Create .env.production from secrets
+      run: |
+        cd breiq-backend
+        cat > .env.production << 'EOF'
+        # Application
+        APP_NAME="Breiq API"
+        APP_ENV=production
+        APP_KEY=${{ secrets.APP_KEY }}
+        APP_DEBUG=false
+        APP_TIMEZONE=UTC
+        APP_URL=${{ secrets.APP_URL }}
+
+        # Database - AWS RDS PostgreSQL
+        DB_CONNECTION=pgsql
+        DB_HOST=${{ secrets.DB_HOST }}
+        DB_PORT=5432
+        DB_DATABASE=breiq_production
+        DB_USERNAME=breiq_admin
+        DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+
+        # Cache & Sessions - AWS ElastiCache Redis
+        CACHE_STORE=redis
+        SESSION_DRIVER=redis
+        REDIS_CLIENT=phpredis
+        REDIS_HOST=${{ secrets.REDIS_HOST }}
+        REDIS_PASSWORD=
+        REDIS_PORT=6379
+        REDIS_PREFIX=breiq_production_cache_
+
+        # Queue - AWS SQS
+        QUEUE_CONNECTION=sqs
+        SQS_PREFIX=https://sqs.us-east-1.amazonaws.com/${{ secrets.AWS_ACCOUNT_ID }}
+        SQS_QUEUE=breiq-production-queue
+        SQS_SUFFIX=
+
+        # File Storage - AWS S3
+        FILESYSTEM_DISK=s3
+        AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION=us-east-1
+        AWS_BUCKET=breiq-production-videos
+        AWS_URL=
+        AWS_ENDPOINT=
+        AWS_USE_PATH_STYLE_ENDPOINT=false
+
+        # CloudFront CDN
+        CLOUDFRONT_URL=${{ secrets.CLOUDFRONT_URL }}
+
+        # Logging
+        LOG_CHANNEL=errorlog
+        LOG_STACK=single
+        LOG_DEPRECATIONS_CHANNEL=null
+        LOG_LEVEL=error
+
+        # Mail - AWS SES
+        MAIL_MAILER=ses
+        MAIL_HOST=
+        MAIL_PORT=
+        MAIL_USERNAME=
+        MAIL_PASSWORD=
+        MAIL_ENCRYPTION=
+        MAIL_FROM_ADDRESS="noreply@breiq.online"
+        MAIL_FROM_NAME="${APP_NAME}"
+
+        # Broadcasting
+        BROADCAST_CONNECTION=log
+
+        # Google OAuth
+        GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+        GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+        GOOGLE_REDIRECT_URI="${APP_URL}/auth/google/callback"
+
+        # Firebase Cloud Messaging
+        FCM_SERVER_KEY=${{ secrets.FCM_SERVER_KEY }}
+        FCM_SENDER_ID=${{ secrets.FCM_SENDER_ID }}
+
+        # Video Processing Configuration
+        MAX_VIDEO_SIZE_MB=100
+        MAX_VIDEO_DURATION_SECONDS=300
+        SUPPORTED_VIDEO_FORMATS=mp4,mov,avi,wmv
+
+        # Production Security Settings
+        SANCTUM_STATEFUL_DOMAINS=breiq.online,api.breiq.online
+        SESSION_DOMAIN=.breiq.online
+        CORS_ALLOWED_ORIGINS="https://breiq.online,app://breiq"
+
+        # Performance Settings
+        OCTANE_SERVER=swoole
+        REDIS_CLIENT=phpredis
+
+        # Monitoring
+        SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_LARAVEL_DSN }}
+        EOF
+
     - name: Build, tag, and push image to Amazon ECR
       id: build-image
       env:
