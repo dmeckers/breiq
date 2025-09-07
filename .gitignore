@@ -1,0 +1,84 @@
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/.terraform.tfstate.lock.info
+terraform/terraform.tfvars
+*.tfplan
+*.tfstate
+*.tfstate.backup
+
+# AWS CLI
+.aws/
+
+# Laravel
+breiq-backend/vendor/
+breiq-backend/node_modules/
+breiq-backend/public/hot
+breiq-backend/public/storage
+breiq-backend/storage/*.key
+breiq-backend/.env
+breiq-backend/.env.backup
+breiq-backend/.phpunit.result.cache
+breiq-backend/Homestead.json
+breiq-backend/Homestead.yaml
+breiq-backend/npm-debug.log
+breiq-backend/yarn-error.log
+
+# Flutter
+breiq/build/
+breiq/.dart_tool/
+breiq/.flutter-plugins
+breiq/.flutter-plugins-dependencies
+breiq/.packages
+breiq/pubspec.lock
+breiq/ios/Pods/
+breiq/ios/Runner.xcworkspace/
+breiq/android/app/debug/
+breiq/android/app/profile/
+breiq/android/app/release/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
