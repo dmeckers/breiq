@@ -143,14 +143,21 @@ jobs:
         # Install composer dependencies
         RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-        # Create startup script
+        # Create startup script that runs in background
         RUN echo '#!/bin/bash' > /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
             echo 'cd /app' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
-            echo 'until php artisan migrate:status > /dev/null 2>&1; do echo "Waiting for DB..."; sleep 5; done' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
-            echo 'php artisan migrate --force' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
-            echo 'php artisan config:cache || true' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
-            echo 'php artisan route:cache || true' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
-            echo 'php artisan view:cache || true' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
+            echo '# Run database setup in background to not block web server startup' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
+            echo '(' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
+            echo '  echo "Starting Laravel setup..."' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
+            echo '  until php artisan migrate:status > /dev/null 2>&1; do echo "Waiting for DB..."; sleep 5; done' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
+            echo '  echo "Database connected, running migrations..."' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
+            echo '  php artisan migrate --force' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
+            echo '  php artisan config:cache || true' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
+            echo '  php artisan route:cache || true' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
+            echo '  php artisan view:cache || true' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
+            echo '  echo "Laravel setup completed successfully!"' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
+            echo ') &' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
+            echo 'echo "Laravel setup started in background, web server starting..."' >> /opt/docker/provision/entrypoint.d/20-laravel-setup.sh && \
             chmod +x /opt/docker/provision/entrypoint.d/20-laravel-setup.sh
 
         EXPOSE 80
