@@ -186,12 +186,15 @@ jobs:
         # Set working directory
         WORKDIR /var/www
 
+        # Copy composer files first for better layer caching
+        COPY composer.json composer.lock /var/www/
+        
+        # Install dependencies first
+        RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
+
         # Copy application files
         COPY . /var/www
         COPY --chown=www-data:www-data . /var/www
-
-        # Install dependencies
-        RUN composer install --no-dev --optimize-autoloader --no-scripts
 
         # Generate optimized class loader
         RUN composer dump-autoload --optimize --no-scripts
