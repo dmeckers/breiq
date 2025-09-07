@@ -8,8 +8,13 @@ This repository uses GitHub Actions for automated deployment to AWS ECS.
 
 Go to your GitHub repository settings and add these secrets:
 
+**AWS Credentials:**
 1. **AWS_ACCESS_KEY_ID**: Your AWS access key
 2. **AWS_SECRET_ACCESS_KEY**: Your AWS secret access key
+
+**Telegram Notifications:**
+3. **TELEGRAM_TO**: Your Telegram chat ID (get from @userinfobot)
+4. **TELEGRAM_TOKEN**: Your Telegram bot token (get from @BotFather)
 
 ### 📝 Getting AWS Credentials
 
@@ -23,11 +28,32 @@ cat ~/.aws/credentials
 aws configure list --profile breiq
 ```
 
+### 📱 Setting Up Telegram Notifications
+
+1. **Create a Telegram Bot:**
+   - Message @BotFather on Telegram
+   - Send `/newbot` and follow instructions
+   - Save the bot token (looks like: `123456789:ABCdefGHIjklMNOpqrSTUVwxyZ`)
+
+2. **Get Your Chat ID:**
+   - Message @userinfobot on Telegram
+   - Send `/start`
+   - Save your chat ID (looks like: `123456789`)
+
+3. **Add to GitHub Secrets:**
+   - `TELEGRAM_TOKEN`: Your bot token
+   - `TELEGRAM_TO`: Your chat ID
+
 ### 🎯 Pipeline Triggers
 
 The pipeline automatically triggers on:
-- Push to `main` or `master` branch
+- Push to `main` or `master` branch  
 - PR merge to `main` or `master` branch
+
+**Telegram Notifications Include:**
+- 🚀 Deployment start notification
+- ✅ Success with live endpoints and container details
+- ❌ Failure with troubleshooting steps and logs
 
 ### 🏗️ What the Pipeline Does
 

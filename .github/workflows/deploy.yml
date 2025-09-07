@@ -20,6 +20,27 @@ jobs:
     if: github.event_name == 'push' || (github.event.pull_request.merged == true)
 
     steps:
+    - name: 🚀 Notify Deployment Start
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.TELEGRAM_TO }}
+        token: ${{ secrets.TELEGRAM_TOKEN }}
+        message: |
+          🚀 **AWS ECS Deployment Started**
+
+          Repository: ${{ github.repository }}
+          Branch: ${{ github.ref_name }}
+          Commit: `${{ github.sha }}`
+          Author: ${{ github.actor }}
+          
+          📋 Deployment Steps:
+          🔧 Building Docker image from GitHub source
+          ☁️ Pushing to AWS ECR registry
+          🚀 Deploying to ECS Fargate cluster
+          🗄️ Running database migrations automatically
+          
+          ⏳ Starting AWS deployment process...
+
     - name: Checkout code
       uses: actions/checkout@v4
 
@@ -209,6 +230,7 @@ jobs:
           --region ${{ env.AWS_REGION }}
 
     - name: Get deployment info
+      id: deployment-info
       run: |
         # Get ALB DNS name
         ALB_DNS=$(aws elbv2 describe-load-balancers \
@@ -217,6 +239,76 @@ jobs:
           --output text \
           --region ${{ env.AWS_REGION }})
         
+        echo "alb_dns=$ALB_DNS" >> $GITHUB_OUTPUT
         echo "🚀 Deployment completed successfully!"
         echo "API Endpoint: http://$ALB_DNS/api/health"
         echo "Image: ${{ steps.build-image.outputs.image }}"
+
+    - name: ✅ Notify Deployment Success
+      if: success()
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.TELEGRAM_TO }}
+        token: ${{ secrets.TELEGRAM_TOKEN }}
+        message: |
+          ✅ **AWS ECS Deployment Successful!**
+
+          Repository: ${{ github.repository }}
+          Branch: ${{ github.ref_name }}
+          Commit: `${{ github.sha }}`
+          Author: ${{ github.actor }}
+
+          🎉 Laravel API deployed successfully to AWS!
+          
+          ✅ **Completed Steps:**
+          🔧 Docker image built from GitHub source
+          ☁️ Image pushed to AWS ECR
+          🚀 Deployed to ECS Fargate cluster  
+          🗄️ Database migrations executed
+          ⚡ Service scaled and health checked
+          
+          🌐 **Live Endpoints:**
+          • API Health: http://${{ steps.deployment-info.outputs.alb_dns }}/api/health
+          • API Base: http://${{ steps.deployment-info.outputs.alb_dns }}/api/
+          
+          🐳 **Container Details:**
+          • Image: ${{ steps.build-image.outputs.image }}
+          • Cluster: ${{ env.ECS_CLUSTER }}
+          • Service: ${{ env.ECS_SERVICE }}
+          
+          🕒 Deployment completed at: $(date)
+
+    - name: ❌ Notify Deployment Failure  
+      if: failure()
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.TELEGRAM_TO }}
+        token: ${{ secrets.TELEGRAM_TOKEN }}
+        message: |
+          ❌ **AWS ECS Deployment Failed!**
+
+          Repository: ${{ github.repository }}
+          Branch: ${{ github.ref_name }}
+          Commit: `${{ github.sha }}`
+          Author: ${{ github.actor }}
+
+          💥 **Deployment failed during AWS execution**
+          
+          🔍 **Possible Issues:**
+          • AWS credentials or permissions
+          • Docker build or ECR push failure
+          • ECS service deployment timeout
+          • Database migration errors
+          • Load balancer health check failure
+          
+          📋 **Troubleshooting Steps:**
+          1. Check GitHub Actions logs for detailed errors
+          2. Verify AWS ECS service status in console
+          3. Check CloudWatch logs: `/ecs/breiq-production`
+          4. Verify database connectivity and migration status
+          
+          🔗 **Action Required:**
+          Please check the GitHub Actions logs for details:
+          https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          
+          ⏰ Failed at: $(date)

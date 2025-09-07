@@ -1,0 +1,6 @@
+[submodule "breiq"]
+	path = breiq
+	url = git@github.com:dmeckers/breiq-flutter.git
+[submodule "breiq-backend"]
+	path = breiq-backend
+	url = git@github.com:dmeckers/breiq-backend.git

@@ -28,32 +28,8 @@ terraform/terraform.tfvars
 # AWS CLI
 .aws/
 
-# Laravel
-breiq-backend/vendor/
-breiq-backend/node_modules/
-breiq-backend/public/hot
-breiq-backend/public/storage
-breiq-backend/storage/*.key
-breiq-backend/.env
-breiq-backend/.env.backup
-breiq-backend/.phpunit.result.cache
-breiq-backend/Homestead.json
-breiq-backend/Homestead.yaml
-breiq-backend/npm-debug.log
-breiq-backend/yarn-error.log
-
-# Flutter
-breiq/build/
-breiq/.dart_tool/
-breiq/.flutter-plugins
-breiq/.flutter-plugins-dependencies
-breiq/.packages
-breiq/pubspec.lock
-breiq/ios/Pods/
-breiq/ios/Runner.xcworkspace/
-breiq/android/app/debug/
-breiq/android/app/profile/
-breiq/android/app/release/
+# Submodules have their own .gitignore files
+# breiq/ and breiq-backend/ are git submodules
 
 # Node.js
 node_modules/
