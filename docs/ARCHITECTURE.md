@@ -1,8 +1,8 @@
-# Breiq Video Platform - Complete Architecture Documentation
+# Breiq - Breakdancing Platform Architecture Documentation
 
 ## 🎯 Executive Summary
 
-Breiq is an Instagram-level video sharing platform built on AWS cloud infrastructure, designed to handle massive scale with enterprise-grade performance, security, and reliability. This document provides comprehensive documentation of the complete system architecture.
+Breiq is a mobile-first breakdancing move documentation platform built with Flutter and Laravel, designed for dancers to film, categorize, and share their moves and routines. This comprehensive architecture supports cross-platform mobile delivery with enterprise-grade AWS infrastructure.
 
 ## 📋 Table of Contents
 
@@ -22,38 +22,42 @@ Breiq is an Instagram-level video sharing platform built on AWS cloud infrastruc
 ## 1. System Overview
 
 ### 1.1 Platform Purpose
-- **Vision**: Create a high-performance video sharing platform comparable to Instagram
-- **Scale**: Designed to handle millions of users and petabytes of video content
-- **Performance**: Sub-second video loading with global CDN distribution
+- **Vision**: Create the ultimate breakdancing move documentation and learning platform
+- **Scale**: Designed for global breakdancing community with optimized mobile video delivery
+- **Performance**: Native mobile performance with offline-capable video storage
 
 ### 1.2 Key Features
-- **Video Upload & Processing**: Multi-format support with automatic transcoding
-- **Real-time Streaming**: WebRTC-based live streaming capabilities
-- **Social Features**: Comments, likes, shares, user profiles
-- **Content Discovery**: AI-powered recommendation engine
-- **Mobile-First**: Optimized for mobile consumption and creation
+- **Move Documentation**: Film and categorize breakdancing moves (toprock, uprocking, power-trick, freeze, power-move, footwork, experimental, groove)
+- **Video Editing**: Advanced in-app video cropping and editing with FFmpeg
+- **Routine Creation**: Build choreographed routines for battles and practice
+- **Social Sharing**: Community-driven platform for dancers to share and discover moves
+- **Cross-Platform Mobile**: Native iOS and Android apps built with Flutter
 
 ### 1.3 Technology Stack
 
-#### Frontend
-- **Framework**: React 18 with TypeScript
-- **State Management**: Redux Toolkit + RTK Query
-- **UI Components**: Custom component library with Material-UI base
-- **Video Player**: Custom WebRTC-enabled player with HLS support
-- **Mobile**: Progressive Web App (PWA) with native app features
+#### Mobile App (Flutter)
+- **Framework**: Flutter 3.7+ with Dart
+- **State Management**: Riverpod with code generation
+- **Architecture**: Clean Architecture with Repository pattern
+- **Navigation**: GoRouter with deep linking support
+- **Video Processing**: FFmpeg Kit + native video editing
+- **Authentication**: Google Sign-in + Laravel Sanctum
+- **Local Storage**: Hive + SQLite for offline capabilities
 
-#### Backend
-- **Runtime**: Node.js 18+ with TypeScript
-- **Framework**: Express.js with Helmet security middleware
-- **API**: REST + GraphQL hybrid architecture
-- **Real-time**: Socket.IO for live features
-- **Authentication**: JWT with refresh token rotation
+#### Backend (Laravel)
+- **Framework**: Laravel 12+ with PHP 8.2+
+- **API Architecture**: RESTful with custom Request/DTO/Repository pattern
+- **Authentication**: Laravel Sanctum + Google OAuth (Socialite)
+- **Authorization**: Spatie Laravel Permission with Gates
+- **Queue System**: Laravel Horizon for video processing
+- **Performance**: Laravel Octane for enhanced performance
 
 #### Infrastructure
-- **Cloud Provider**: AWS (Multi-region deployment)
-- **Container Orchestration**: Amazon ECS with Fargate
-- **Infrastructure as Code**: Terraform with modular architecture
-- **CI/CD**: GitHub Actions with blue-green deployments
+- **Cloud Provider**: AWS optimized for mobile API delivery
+- **Compute**: ECS Fargate for Laravel API with auto-scaling
+- **Mobile Delivery**: CloudFront CDN with mobile-optimized caching
+- **App Distribution**: GitHub Actions with Flutter build automation
+- **Infrastructure as Code**: Terraform with mobile-first architecture
 
 ---
 

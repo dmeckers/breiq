@@ -1,6 +1,6 @@
 # ====================================
-# BREIQ INSTAGRAM REELS ARCHITECTURE
-# Complete Terraform Infrastructure as Code
+# BREIQ SIMPLE AWS INFRASTRUCTURE
+# Mobile-First Flutter + Laravel Infrastructure
 # ====================================
 
 terraform {
@@ -22,92 +22,16 @@ terraform {
 # ====================================
 
 provider "aws" {
-  region = var.aws_region
+  region  = var.aws_region
+  profile = var.aws_profile
 
   default_tags {
     tags = {
       Project     = "breiq"
       Environment = var.environment
       ManagedBy   = "terraform"
-      Purpose     = "instagram-reels-architecture"
-    }
-  }
-}
-
-# ====================================
-# VARIABLES
-# ====================================
-
-variable "aws_region" {
-  description = "Primary AWS region"
-  type        = string
-  default     = "us-east-1" # Best for global CloudFront performance
-}
-
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "production"
-}
-
-variable "project_name" {
-  description = "Project name"
-  type        = string
-  default     = "breiq"
-}
-
-variable "domain_name" {
-  description = "Primary domain name"
-  type        = string
-  default     = "breiq.online"
-}
-
-variable "enable_multi_region" {
-  description = "Enable multi-region deployment for global performance"
-  type        = bool
-  default     = true
-}
-
-variable "video_bucket_cors_origins" {
-  description = "CORS origins for video bucket"
-  type        = list(string)
-  default     = ["https://breiq.online", "https://www.breiq.online", "https://app.breiq.online"]
-}
-
-# ====================================
-# LOCALS
-# ====================================
-
-locals {
-  common_tags = {
-    Project     = var.project_name
-    Environment = var.environment
-  }
-
-  # Multi-region support for Instagram-level performance
-  regions = var.enable_multi_region ? [
-    "us-east-1",    # North America East
-    "us-west-2",    # North America West  
-    "eu-west-1",    # Europe
-    "ap-southeast-1" # Asia Pacific
-  ] : [var.aws_region]
-
-  # Video quality profiles (like Instagram)
-  video_profiles = {
-    mobile_low = {
-      width  = 480
-      height = 854
-      bitrate = "500k"
-    }
-    mobile_standard = {
-      width  = 720
-      height = 1280
-      bitrate = "1500k"
-    }
-    hd = {
-      width  = 1080
-      height = 1920
-      bitrate = "3000k"
+      Purpose     = "breakdancing-mobile-platform"
+      Account     = "personal"
     }
   }
 }
@@ -122,8 +46,6 @@ data "aws_availability_zones" "available" {
 
 data "aws_caller_identity" "current" {}
 
-data "aws_region" "current" {}
-
 # ====================================
 # RANDOM IDENTIFIERS
 # ====================================
@@ -135,132 +57,585 @@ resource "random_string" "bucket_suffix" {
 }
 
 # ====================================
-# MAIN INFRASTRUCTURE MODULES
+# VPC AND NETWORKING
 # ====================================
 
-# 1. Video Storage and CDN System
-module "video_delivery" {
-  source = "./modules/video-delivery"
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
 
-  project_name     = var.project_name
-  environment      = var.environment
-  bucket_suffix    = random_string.bucket_suffix.result
-  cors_origins     = var.video_bucket_cors_origins
-  video_profiles   = local.video_profiles
-  
-  tags = local.common_tags
+  tags = {
+    Name = "${var.project_name}-${var.environment}-vpc"
+  }
 }
 
-# 2. Database Infrastructure (Aurora + DocumentDB)
-module "database" {
-  source = "./modules/database"
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
 
-  project_name = var.project_name
-  environment  = var.environment
-  vpc_id       = module.networking.vpc_id
-  subnet_ids   = module.networking.private_subnet_ids
-  
-  # Instagram-level database configuration
-  instance_class     = "db.r6g.xlarge"  # High performance for feeds
-  backup_retention   = 30               # Long backup retention
-  multi_az          = true              # High availability
-  
-  tags = local.common_tags
+  tags = {
+    Name = "${var.project_name}-${var.environment}-igw"
+  }
 }
 
-# 3. Caching Infrastructure (Redis/ElastiCache)
-module "caching" {
-  source = "./modules/caching"
+resource "aws_subnet" "public" {
+  count = 2
 
-  project_name = var.project_name
-  environment  = var.environment
-  vpc_id       = module.networking.vpc_id
-  subnet_ids   = module.networking.private_subnet_ids
-  
-  # Instagram-level caching for feeds
-  node_type          = "cache.r6g.xlarge"
-  num_cache_nodes    = 3
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.${count.index + 1}.0/24"
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-public-${count.index + 1}"
+  }
+}
+
+resource "aws_subnet" "private" {
+  count = 2
+
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.${count.index + 10}.0/24"
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-private-${count.index + 1}"
+  }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-public-rt"
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  count = length(aws_subnet.public)
+
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+# NAT Gateway for private subnets to access internet
+resource "aws_eip" "nat" {
+  domain = "vpc"
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-nat-eip"
+  }
+
+  depends_on = [aws_internet_gateway.main]
+}
+
+resource "aws_nat_gateway" "main" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public[0].id
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-nat"
+  }
+
+  depends_on = [aws_internet_gateway.main]
+}
+
+# Route table for private subnets
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main.id
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-private-rt"
+  }
+}
+
+resource "aws_route_table_association" "private" {
+  count = length(aws_subnet.private)
+
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private.id
+}
+
+# ====================================
+# SECURITY GROUPS
+# ====================================
+
+resource "aws_security_group" "alb" {
+  name_prefix = "${var.project_name}-${var.environment}-alb-"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-alb-sg"
+  }
+}
+
+resource "aws_security_group" "ecs" {
+  name_prefix = "${var.project_name}-${var.environment}-ecs-"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ecs-sg"
+  }
+}
+
+resource "aws_security_group" "rds" {
+  name_prefix = "${var.project_name}-${var.environment}-rds-"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs.id]
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-rds-sg"
+  }
+}
+
+resource "aws_security_group" "redis" {
+  name_prefix = "${var.project_name}-${var.environment}-redis-"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs.id]
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-redis-sg"
+  }
+}
+
+# ====================================
+# DATABASE (RDS PostgreSQL)
+# ====================================
+
+resource "aws_db_subnet_group" "main" {
+  name       = "${var.project_name}-${var.environment}-db-subnet-group"
+  subnet_ids = aws_subnet.private[*].id
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-db-subnet-group"
+  }
+}
+
+resource "aws_db_instance" "main" {
+  identifier = "${var.project_name}-${var.environment}-db"
+
+  engine         = "postgres"
+  engine_version = "15.8"
+  instance_class = var.db_instance_class
+
+  allocated_storage     = 20
+  max_allocated_storage = 100
+  storage_type          = "gp3"
+  storage_encrypted     = true
+
+  db_name  = "breiq_${var.environment}"
+  username = "breiq_admin"
+  password = random_password.db_password.result
+
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+
+  backup_retention_period = var.db_backup_retention_days
+  backup_window          = "03:00-04:00"
+  maintenance_window     = "sun:04:00-sun:05:00"
+
+  multi_az               = var.db_multi_az
+  publicly_accessible    = false
+  deletion_protection    = false
+
+  skip_final_snapshot = true
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-database"
+  }
+}
+
+resource "random_password" "db_password" {
+  length  = 20
+  special = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+# ====================================
+# CACHE (ELASTICACHE REDIS)
+# ====================================
+
+resource "aws_elasticache_subnet_group" "main" {
+  name       = "${var.project_name}-${var.environment}-cache-subnet-group"
+  subnet_ids = aws_subnet.private[*].id
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-cache-subnet-group"
+  }
+}
+
+resource "aws_elasticache_cluster" "main" {
+  cluster_id           = "${var.project_name}-${var.environment}-redis"
+  engine               = "redis"
+  node_type           = var.cache_node_type
+  num_cache_nodes     = var.cache_num_nodes
   parameter_group_name = "default.redis7"
-  
-  tags = local.common_tags
+  port                = 6379
+  subnet_group_name   = aws_elasticache_subnet_group.main.name
+  security_group_ids  = [aws_security_group.redis.id]
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-redis"
+  }
 }
 
-# 4. Networking Infrastructure
-module "networking" {
-  source = "./modules/networking"
+# ====================================
+# S3 STORAGE
+# ====================================
 
-  project_name = var.project_name
-  environment  = var.environment
-  
-  # High availability across multiple AZs
-  availability_zones = data.aws_availability_zones.available.names
-  
-  tags = local.common_tags
+resource "aws_s3_bucket" "videos" {
+  bucket = "${var.project_name}-${var.environment}-videos-${random_string.bucket_suffix.result}"
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-videos"
+  }
 }
 
-# 5. Application Infrastructure (ECS/Lambda)
-module "application" {
-  source = "./modules/application"
+resource "aws_s3_bucket_public_access_block" "videos" {
+  bucket = aws_s3_bucket.videos.id
 
-  project_name     = var.project_name
-  environment      = var.environment
-  vpc_id          = module.networking.vpc_id
-  subnet_ids      = module.networking.private_subnet_ids
-  public_subnet_ids = module.networking.public_subnet_ids
-  
-  # Reference to other resources
-  video_bucket_name    = module.video_delivery.video_bucket_name
-  cloudfront_domain    = module.video_delivery.cloudfront_domain
-  database_endpoint    = module.database.rds_endpoint
-  redis_endpoint       = module.caching.redis_endpoint
-  
-  tags = local.common_tags
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
 }
 
-# 6. Monitoring and Analytics
-module "monitoring" {
-  source = "./modules/monitoring"
+resource "aws_s3_bucket_cors_configuration" "videos" {
+  bucket = aws_s3_bucket.videos.id
 
-  project_name = var.project_name
-  environment  = var.environment
-  
-  # Resources to monitor
-  cloudfront_distribution_id = module.video_delivery.cloudfront_distribution_id
-  rds_cluster_id            = module.database.rds_cluster_id
-  redis_cluster_id          = module.caching.redis_cluster_id
-  
-  tags = local.common_tags
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "POST", "DELETE", "HEAD"]
+    allowed_origins = var.video_bucket_cors_origins
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
+# ====================================
+# ECS CLUSTER & SERVICE
+# ====================================
+
+resource "aws_ecs_cluster" "main" {
+  name = "${var.project_name}-${var.environment}-cluster"
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-cluster"
+  }
+}
+
+# IAM Role for ECS Task Execution
+resource "aws_iam_role" "ecs_task_execution_role" {
+  name = "${var.project_name}-${var.environment}-ecs-task-execution-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+      },
+    ]
+  })
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ecs-task-execution-role"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+# IAM Role for ECS Task (for ECS Exec)
+resource "aws_iam_role" "ecs_task_role" {
+  name = "${var.project_name}-${var.environment}-ecs-task-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+      },
+    ]
+  })
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ecs-task-role"
+  }
+}
+
+# ECS Exec permissions
+resource "aws_iam_role_policy" "ecs_exec_policy" {
+  name = "${var.project_name}-${var.environment}-ecs-exec-policy"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# ECS Task Definition
+resource "aws_ecs_task_definition" "main" {
+  family                   = "${var.project_name}-${var.environment}-backend"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = var.ecs_cpu
+  memory                   = var.ecs_memory
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
+
+  container_definitions = jsonencode([
+    {
+      name  = "${var.project_name}-backend"
+      image = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/breiq-backend:latest"
+      
+      portMappings = [
+        {
+          containerPort = 80
+          protocol      = "tcp"
+        }
+      ]
+      
+      environment = []
+      
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = "/ecs/${var.project_name}-${var.environment}"
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "ecs"
+        }
+      }
+      
+      healthCheck = {
+        command     = ["CMD-SHELL", "curl -f http://localhost/api/health || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 60
+      }
+
+      essential = true
+    }
+  ])
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-task-definition"
+  }
+}
+
+# CloudWatch Log Group for ECS
+resource "aws_cloudwatch_log_group" "ecs" {
+  name              = "/ecs/${var.project_name}-${var.environment}"
+  retention_in_days = 7
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-logs"
+  }
+}
+
+# ECS Service
+resource "aws_ecs_service" "main" {
+  name            = "${var.project_name}-${var.environment}-backend"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.main.arn
+  desired_count   = var.ecs_desired_count
+  launch_type     = "FARGATE"
+  enable_execute_command = true
+
+  network_configuration {
+    subnets          = aws_subnet.private[*].id
+    security_groups  = [aws_security_group.ecs.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.main.arn
+    container_name   = "${var.project_name}-backend"
+    container_port   = 80
+  }
+
+  depends_on = [
+    aws_lb_listener.main,
+    aws_iam_role_policy_attachment.ecs_task_execution_role_policy,
+  ]
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-service"
+  }
+}
+
+# ====================================
+# APPLICATION LOAD BALANCER
+# ====================================
+
+resource "aws_lb" "main" {
+  name               = "${var.project_name}-${var.environment}-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = aws_subnet.public[*].id
+
+  enable_deletion_protection = false
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-alb"
+  }
+}
+
+resource "aws_lb_target_group" "main" {
+  name     = "${var.project_name}-${var.environment}-tg"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
+    path                = "/api/health"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-tg"
+  }
+}
+
+resource "aws_lb_listener" "main" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.main.arn
+  }
 }
 
 # ====================================
 # OUTPUTS
 # ====================================
 
-output "video_delivery_endpoints" {
-  description = "Video delivery system endpoints"
-  value = {
-    cloudfront_domain = module.video_delivery.cloudfront_domain
-    s3_bucket_name   = module.video_delivery.video_bucket_name
-    api_endpoint     = module.application.api_gateway_endpoint
-  }
+output "database_endpoint" {
+  description = "RDS database endpoint"
+  value       = aws_db_instance.main.endpoint
+  sensitive   = true
 }
 
-output "database_endpoints" {
-  description = "Database connection endpoints"
-  value = {
-    rds_endpoint     = module.database.rds_endpoint
-    documentdb_endpoint = module.database.documentdb_endpoint
-    redis_endpoint   = module.caching.redis_endpoint
-  }
-  sensitive = true
+output "database_password" {
+  description = "Database password"
+  value       = random_password.db_password.result
+  sensitive   = true
 }
 
-output "application_endpoints" {
-  description = "Application endpoints"
-  value = {
-    load_balancer_dns = module.application.load_balancer_dns
-    api_gateway_url   = module.application.api_gateway_endpoint
-  }
+output "redis_endpoint" {
+  description = "Redis endpoint"
+  value       = aws_elasticache_cluster.main.cache_nodes[0].address
+}
+
+output "s3_bucket_name" {
+  description = "S3 bucket name for videos"
+  value       = aws_s3_bucket.videos.bucket
+}
+
+output "load_balancer_dns" {
+  description = "Load balancer DNS name"
+  value       = aws_lb.main.dns_name
+}
+
+output "vpc_id" {
+  description = "VPC ID"
+  value       = aws_vpc.main.id
 }
 
 output "deployment_info" {

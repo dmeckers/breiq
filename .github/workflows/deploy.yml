@@ -1,0 +1,222 @@
+name: Deploy to AWS ECS
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+    types: [closed]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: breiq-backend
+  ECS_SERVICE: breiq-production-backend
+  ECS_CLUSTER: breiq-production-cluster
+
+jobs:
+  deploy:
+    name: Deploy Laravel API
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event.pull_request.merged == true)
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build, tag, and push image to Amazon ECR
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Navigate to Laravel backend directory
+        cd breiq-backend
+        
+        # Create production Dockerfile
+        cat > Dockerfile << 'EOF'
+        FROM php:8.2-fpm-alpine
+
+        # Install system dependencies
+        RUN apk add --no-cache \
+            git \
+            curl \
+            libpng-dev \
+            oniguruma-dev \
+            libxml2-dev \
+            zip \
+            unzip \
+            postgresql-dev \
+            redis \
+            supervisor \
+            nginx \
+            bash
+
+        # Install PHP extensions
+        RUN docker-php-ext-install pdo pdo_pgsql mbstring exif pcntl bcmath gd
+
+        # Get latest Composer
+        COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+        # Set working directory
+        WORKDIR /var/www
+
+        # Copy application files
+        COPY . /var/www
+        COPY --chown=www-data:www-data . /var/www
+
+        # Install dependencies
+        RUN composer install --no-dev --optimize-autoloader --no-scripts
+
+        # Generate optimized class loader
+        RUN composer dump-autoload --optimize --no-scripts
+
+        # Copy environment file
+        COPY .env.production /var/www/.env
+
+        # Create startup script
+        RUN cat > /var/www/startup.sh << 'SCRIPT_EOF'
+        #!/bin/bash
+        set -e
+        
+        echo "Starting Breiq Laravel API..."
+        cd /var/www
+        
+        # Wait for database to be ready
+        echo "Waiting for database connection..."
+        until php artisan migrate:status > /dev/null 2>&1; do
+            echo "Database not ready, waiting 5 seconds..."
+            sleep 5
+        done
+        
+        # Run database migrations
+        echo "Running database migrations..."
+        php artisan migrate --force
+        
+        # Laravel optimization commands
+        echo "Running Laravel optimization..."
+        php artisan config:cache --ansi || echo "Config cache failed"
+        php artisan route:cache --ansi || echo "Route cache failed"  
+        php artisan view:cache --ansi || echo "View cache failed"
+        
+        echo "Laravel initialization complete"
+        exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+        SCRIPT_EOF
+        
+        RUN chmod +x /var/www/startup.sh
+
+        # Configure Nginx
+        RUN cat > /etc/nginx/nginx.conf << 'NGINX_EOF'
+        events {
+            worker_connections 1024;
+        }
+
+        http {
+            include /etc/nginx/mime.types;
+            default_type application/octet-stream;
+            
+            sendfile on;
+            keepalive_timeout 65;
+            
+            server {
+                listen 80;
+                index index.php index.html;
+                root /var/www/public;
+
+                location / {
+                    try_files $uri $uri/ /index.php?$query_string;
+                }
+
+                location ~ \.php$ {
+                    fastcgi_pass 127.0.0.1:9000;
+                    fastcgi_index index.php;
+                    include fastcgi_params;
+                    fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+                }
+
+                location ~ /\.ht {
+                    deny all;
+                }
+            }
+        }
+        NGINX_EOF
+
+        # Configure Supervisor
+        RUN cat > /etc/supervisor/conf.d/supervisord.conf << 'SUPERVISOR_EOF'
+        [supervisord]
+        nodaemon=true
+
+        [program:nginx]
+        command=nginx -g "daemon off;"
+        autostart=true
+        autorestart=true
+        stderr_logfile=/var/log/nginx/error.log
+        stdout_logfile=/var/log/nginx/access.log
+
+        [program:php-fpm]
+        command=php-fpm
+        autostart=true
+        autorestart=true
+        SUPERVISOR_EOF
+
+        # Configure PHP-FPM
+        RUN echo "listen = 127.0.0.1:9000" >> /usr/local/etc/php-fpm.d/www.conf
+
+        # Create nginx run directory
+        RUN mkdir -p /var/run/nginx
+
+        # Expose port 80
+        EXPOSE 80
+
+        # Start with our startup script
+        CMD ["/var/www/startup.sh"]
+        EOF
+
+        # Build Docker image
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        
+        # Push to ECR
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    - name: Update ECS service
+      run: |
+        # Force new deployment with latest image
+        aws ecs update-service \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --service ${{ env.ECS_SERVICE }} \
+          --force-new-deployment \
+          --region ${{ env.AWS_REGION }}
+
+        # Wait for deployment to complete
+        echo "Waiting for service to stabilize..."
+        aws ecs wait services-stable \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --services ${{ env.ECS_SERVICE }} \
+          --region ${{ env.AWS_REGION }}
+
+    - name: Get deployment info
+      run: |
+        # Get ALB DNS name
+        ALB_DNS=$(aws elbv2 describe-load-balancers \
+          --names breiq-production-alb \
+          --query 'LoadBalancers[0].DNSName' \
+          --output text \
+          --region ${{ env.AWS_REGION }})
+        
+        echo "🚀 Deployment completed successfully!"
+        echo "API Endpoint: http://$ALB_DNS/api/health"
+        echo "Image: ${{ steps.build-image.outputs.image }}"

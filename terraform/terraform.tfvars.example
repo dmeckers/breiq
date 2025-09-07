@@ -1,53 +1,51 @@
 # ====================================
-# BREIQ TERRAFORM VARIABLES EXAMPLE
-# Copy this file to terraform.tfvars and customize
+# BREIQ TERRAFORM CONFIGURATION
+# Copy this file to terraform.tfvars and customize for your environment
 # ====================================
 
-# Basic Configuration
-aws_region   = "us-east-1"
-environment  = "production"
+# AWS Configuration
+aws_region  = "us-east-1"
+aws_profile = "breiq"           # Your personal AWS account profile
+environment = "production"      # or "staging"
+
+# Project Configuration
 project_name = "breiq"
-domain_name  = "breiq.online"
+domain_name  = "breiq.online"   # Replace with your domain
 
-# Performance Settings
-enable_multi_region = true
-
-# CORS Origins for Video Access
-video_bucket_cors_origins = [
+# Mobile App Configuration
+mobile_app_origins = [
   "https://breiq.online",
-  "https://www.breiq.online", 
-  "https://app.breiq.online",
-  "https://admin.breiq.online"
+  "app://breiq",
+  "https://breiq-admin.online"
 ]
 
-# ====================================
-# ADVANCED CONFIGURATION
-# Uncomment and customize as needed
-# ====================================
+# Database Configuration (Start Small, Scale Up)
+db_instance_class         = "db.t4g.medium"    # Cost-effective start
+db_backup_retention_days  = 7                  # 7 days backup
+db_multi_az              = false               # Single AZ to start
 
-# Custom VPC CIDR (optional)
-# vpc_cidr = "10.0.0.0/16"
+# Caching Configuration
+cache_node_type = "cache.t4g.micro"           # Start small
+cache_num_nodes = 1                           # Single node
 
-# Database Configuration
-# rds_instance_class = "db.r6g.xlarge"  # For production
-# rds_backup_retention = 30
-# enable_rds_multi_az = true
+# ECS Configuration (Laravel API)
+ecs_cpu           = 512                       # 0.5 vCPU
+ecs_memory        = 1024                      # 1GB RAM
+ecs_desired_count = 2                         # 2 tasks for availability
+ecs_min_capacity  = 1                         # Min 1 task
+ecs_max_capacity  = 10                        # Max 10 tasks
 
-# Cache Configuration  
-# redis_node_type = "cache.r6g.xlarge"  # For production
-# redis_num_nodes = 3
+# Monitoring
+enable_detailed_monitoring = true
+alert_email               = "your-email@example.com"  # Replace with your email
 
-# Video Processing
-# enable_video_transcoding = true
-# video_quality_profiles = ["480p", "720p", "1080p"]
+# Security
+enable_waf = true
+# allowed_cidr_blocks = ["YOUR_IP/32"]  # Restrict to your IP if needed
 
-# SSL Certificate (if using custom domain)
-# ssl_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
-
-# Monitoring and Alerts
-# enable_enhanced_monitoring = true
-# alert_email = "admin@breiq.online"
-
-# Cost Optimization
-# enable_spot_instances = true
-# enable_s3_lifecycle_policies = true
+# Optional: Additional tags
+additional_tags = {
+  Owner       = "YourName"
+  CostCenter  = "Personal"
+  Project     = "BreiqApp"
+}
