@@ -105,90 +105,83 @@ jobs:
         # Copy environment file
         COPY .env.production /var/www/.env
 
-        # Create startup script
-        RUN cat > /var/www/startup.sh << 'SCRIPT_EOF'
-        #!/bin/bash
-        set -e
-        
-        echo "Starting Breiq Laravel API..."
-        cd /var/www
-        
-        # Wait for database to be ready
-        echo "Waiting for database connection..."
-        until php artisan migrate:status > /dev/null 2>&1; do
-            echo "Database not ready, waiting 5 seconds..."
-            sleep 5
-        done
-        
-        # Run database migrations
-        echo "Running database migrations..."
-        php artisan migrate --force
-        
-        # Laravel optimization commands
-        echo "Running Laravel optimization..."
-        php artisan config:cache --ansi || echo "Config cache failed"
-        php artisan route:cache --ansi || echo "Route cache failed"  
-        php artisan view:cache --ansi || echo "View cache failed"
-        
-        echo "Laravel initialization complete"
-        exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
-        SCRIPT_EOF
-        
-        RUN chmod +x /var/www/startup.sh
+        # Create startup script using echo commands
+        RUN echo '#!/bin/bash' > /var/www/startup.sh && \
+            echo 'set -e' >> /var/www/startup.sh && \
+            echo '' >> /var/www/startup.sh && \
+            echo 'echo "Starting Breiq Laravel API..."' >> /var/www/startup.sh && \
+            echo 'cd /var/www' >> /var/www/startup.sh && \
+            echo '' >> /var/www/startup.sh && \
+            echo '# Wait for database to be ready' >> /var/www/startup.sh && \
+            echo 'echo "Waiting for database connection..."' >> /var/www/startup.sh && \
+            echo 'until php artisan migrate:status > /dev/null 2>&1; do' >> /var/www/startup.sh && \
+            echo '    echo "Database not ready, waiting 5 seconds..."' >> /var/www/startup.sh && \
+            echo '    sleep 5' >> /var/www/startup.sh && \
+            echo 'done' >> /var/www/startup.sh && \
+            echo '' >> /var/www/startup.sh && \
+            echo '# Run database migrations' >> /var/www/startup.sh && \
+            echo 'echo "Running database migrations..."' >> /var/www/startup.sh && \
+            echo 'php artisan migrate --force' >> /var/www/startup.sh && \
+            echo '' >> /var/www/startup.sh && \
+            echo '# Laravel optimization commands' >> /var/www/startup.sh && \
+            echo 'echo "Running Laravel optimization..."' >> /var/www/startup.sh && \
+            echo 'php artisan config:cache --ansi || echo "Config cache failed"' >> /var/www/startup.sh && \
+            echo 'php artisan route:cache --ansi || echo "Route cache failed"' >> /var/www/startup.sh && \
+            echo 'php artisan view:cache --ansi || echo "View cache failed"' >> /var/www/startup.sh && \
+            echo '' >> /var/www/startup.sh && \
+            echo 'echo "Laravel initialization complete"' >> /var/www/startup.sh && \
+            echo 'exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf' >> /var/www/startup.sh && \
+            chmod +x /var/www/startup.sh
 
         # Configure Nginx
-        RUN cat > /etc/nginx/nginx.conf << 'NGINX_EOF'
-        events {
-            worker_connections 1024;
-        }
-
-        http {
-            include /etc/nginx/mime.types;
-            default_type application/octet-stream;
-            
-            sendfile on;
-            keepalive_timeout 65;
-            
-            server {
-                listen 80;
-                index index.php index.html;
-                root /var/www/public;
-
-                location / {
-                    try_files $uri $uri/ /index.php?$query_string;
-                }
-
-                location ~ \.php$ {
-                    fastcgi_pass 127.0.0.1:9000;
-                    fastcgi_index index.php;
-                    include fastcgi_params;
-                    fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
-                }
-
-                location ~ /\.ht {
-                    deny all;
-                }
-            }
-        }
-        NGINX_EOF
+        RUN echo 'events {' > /etc/nginx/nginx.conf && \
+            echo '    worker_connections 1024;' >> /etc/nginx/nginx.conf && \
+            echo '}' >> /etc/nginx/nginx.conf && \
+            echo '' >> /etc/nginx/nginx.conf && \
+            echo 'http {' >> /etc/nginx/nginx.conf && \
+            echo '    include /etc/nginx/mime.types;' >> /etc/nginx/nginx.conf && \
+            echo '    default_type application/octet-stream;' >> /etc/nginx/nginx.conf && \
+            echo '    ' >> /etc/nginx/nginx.conf && \
+            echo '    sendfile on;' >> /etc/nginx/nginx.conf && \
+            echo '    keepalive_timeout 65;' >> /etc/nginx/nginx.conf && \
+            echo '    ' >> /etc/nginx/nginx.conf && \
+            echo '    server {' >> /etc/nginx/nginx.conf && \
+            echo '        listen 80;' >> /etc/nginx/nginx.conf && \
+            echo '        index index.php index.html;' >> /etc/nginx/nginx.conf && \
+            echo '        root /var/www/public;' >> /etc/nginx/nginx.conf && \
+            echo '' >> /etc/nginx/nginx.conf && \
+            echo '        location / {' >> /etc/nginx/nginx.conf && \
+            echo '            try_files $uri $uri/ /index.php?$query_string;' >> /etc/nginx/nginx.conf && \
+            echo '        }' >> /etc/nginx/nginx.conf && \
+            echo '' >> /etc/nginx/nginx.conf && \
+            echo '        location ~ \.php$ {' >> /etc/nginx/nginx.conf && \
+            echo '            fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/nginx.conf && \
+            echo '            fastcgi_index index.php;' >> /etc/nginx/nginx.conf && \
+            echo '            include fastcgi_params;' >> /etc/nginx/nginx.conf && \
+            echo '            fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;' >> /etc/nginx/nginx.conf && \
+            echo '        }' >> /etc/nginx/nginx.conf && \
+            echo '' >> /etc/nginx/nginx.conf && \
+            echo '        location ~ /\.ht {' >> /etc/nginx/nginx.conf && \
+            echo '            deny all;' >> /etc/nginx/nginx.conf && \
+            echo '        }' >> /etc/nginx/nginx.conf && \
+            echo '    }' >> /etc/nginx/nginx.conf && \
+            echo '}' >> /etc/nginx/nginx.conf
 
         # Configure Supervisor
-        RUN cat > /etc/supervisor/conf.d/supervisord.conf << 'SUPERVISOR_EOF'
-        [supervisord]
-        nodaemon=true
-
-        [program:nginx]
-        command=nginx -g "daemon off;"
-        autostart=true
-        autorestart=true
-        stderr_logfile=/var/log/nginx/error.log
-        stdout_logfile=/var/log/nginx/access.log
-
-        [program:php-fpm]
-        command=php-fpm
-        autostart=true
-        autorestart=true
-        SUPERVISOR_EOF
+        RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
+            echo 'nodaemon=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+            echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
+            echo '[program:nginx]' >> /etc/supervisor/conf.d/supervisord.conf && \
+            echo 'command=nginx -g "daemon off;"' >> /etc/supervisor/conf.d/supervisord.conf && \
+            echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+            echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+            echo 'stderr_logfile=/var/log/nginx/error.log' >> /etc/supervisor/conf.d/supervisord.conf && \
+            echo 'stdout_logfile=/var/log/nginx/access.log' >> /etc/supervisor/conf.d/supervisord.conf && \
+            echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
+            echo '[program:php-fpm]' >> /etc/supervisor/conf.d/supervisord.conf && \
+            echo 'command=php-fpm' >> /etc/supervisor/conf.d/supervisord.conf && \
+            echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+            echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf
 
         # Configure PHP-FPM
         RUN echo "listen = 127.0.0.1:9000" >> /usr/local/etc/php-fpm.d/www.conf
