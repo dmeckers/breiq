@@ -134,6 +134,9 @@ jobs:
         cat > Dockerfile << 'EOF'
         FROM webdevops/php-nginx:8.2-alpine
 
+        # Set working directory
+        WORKDIR /app
+
         # Copy application files
         COPY --chown=application:application . /app
 
