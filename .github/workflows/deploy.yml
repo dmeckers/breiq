@@ -262,6 +262,58 @@ jobs:
         echo "🚀 Deployment completed successfully!"
         echo "API Endpoint: http://$ALB_DNS/api/health"
 
+    - name: Clear Laravel caches post-deployment
+      run: |
+        echo "🗑️ Clearing Laravel caches in running containers..."
+        
+        # Get running task ARNs
+        TASK_ARNS=$(aws ecs list-tasks \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --service ${{ env.ECS_SERVICE }} \
+          --desired-status RUNNING \
+          --region ${{ env.AWS_REGION }} \
+          --query 'taskArns' \
+          --output text)
+        
+        if [ -z "$TASK_ARNS" ]; then
+          echo "❌ No running tasks found"
+          exit 1
+        fi
+        
+        # Clear caches on first running task
+        FIRST_TASK=$(echo $TASK_ARNS | awk '{print $1}')
+        echo "📋 Clearing caches on task: $FIRST_TASK"
+        
+        # Execute cache clearing commands
+        echo "🗑️ Clearing configuration cache..."
+        aws ecs execute-command \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --task "$FIRST_TASK" \
+          --container breiq-backend \
+          --command "php /app/artisan config:clear" \
+          --interactive \
+          --region ${{ env.AWS_REGION }} || echo "⚠️ Config cache clear failed"
+        
+        echo "🗑️ Clearing route cache..."
+        aws ecs execute-command \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --task "$FIRST_TASK" \
+          --container breiq-backend \
+          --command "php /app/artisan route:clear" \
+          --interactive \
+          --region ${{ env.AWS_REGION }} || echo "⚠️ Route cache clear failed"
+        
+        echo "🗑️ Clearing view cache..."
+        aws ecs execute-command \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --task "$FIRST_TASK" \
+          --container breiq-backend \
+          --command "php /app/artisan view:clear" \
+          --interactive \
+          --region ${{ env.AWS_REGION }} || echo "⚠️ View cache clear failed"
+        
+        echo "✅ Cache clearing completed"
+
     - name: ✅ Notify Deployment Success
       if: success()
       uses: appleboy/telegram-action@master
