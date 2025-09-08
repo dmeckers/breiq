@@ -63,56 +63,75 @@ Breiq is a mobile-first breakdancing move documentation platform built with Flut
 
 ## 2. Infrastructure Architecture
 
-### 2.1 AWS Services Architecture
+### 2.1 AWS Services Architecture (Current Implementation)
 
 ```mermaid
 graph TB
-    subgraph "Global Infrastructure"
-        CF[CloudFront CDN]
-        R53[Route 53]
-        WAF[AWS WAF]
+    subgraph "DNS & CDN"
+        R53[Route 53 DNS]
+        ACM[SSL Certificate Manager]
     end
     
-    subgraph "Primary Region: us-east-1"
-        ALB[Application Load Balancer]
-        ECS[ECS Fargate Cluster]
-        RDS[RDS PostgreSQL Multi-AZ]
-        REDIS[ElastiCache Redis Cluster]
-        S3[S3 Video Storage]
-        LAMBDA[Lambda Functions]
+    subgraph "us-east-1 Region"
+        subgraph "Public Subnets"
+            ALB[Application Load Balancer]
+            NAT[NAT Gateway]
+        end
+        
+        subgraph "Private Subnets"
+            ECS[ECS Fargate Cluster]
+            RDS[RDS PostgreSQL 15.8]
+            REDIS[ElastiCache Redis 7.0]
+        end
+        
+        subgraph "Storage"
+            S3[S3 Video Bucket]
+            ECR[ECR Docker Registry]
+        end
+        
+        subgraph "Monitoring"
+            CW[CloudWatch Logs]
+            CWM[CloudWatch Metrics]
+        end
     end
     
-    subgraph "Secondary Region: us-west-2"
-        ALB2[Application Load Balancer]
-        ECS2[ECS Fargate Cluster]
-        RDS2[RDS Read Replica]
-        REDIS2[ElastiCache Redis]
-        S3_REP[S3 Cross-Region Replication]
+    subgraph "CI/CD Pipeline"
+        GHA[GitHub Actions]
+        TG[Telegram Notifications]
     end
     
-    CF --> WAF --> ALB
-    CF --> WAF --> ALB2
-    R53 --> CF
+    R53 --> ALB
+    ACM --> ALB
     ALB --> ECS
     ECS --> RDS
     ECS --> REDIS
     ECS --> S3
-    ECS --> LAMBDA
+    ECS --> CW
+    GHA --> ECR
+    GHA --> ECS
+    GHA --> TG
 ```
 
-### 2.2 Network Architecture
+### 2.2 Network Architecture (Current Implementation)
 
 #### VPC Configuration
 - **CIDR**: 10.0.0.0/16
 - **Public Subnets**: 2 AZs (10.0.1.0/24, 10.0.2.0/24)
-- **Private Subnets**: 2 AZs (10.0.3.0/24, 10.0.4.0/24)
-- **Database Subnets**: 2 AZs (10.0.5.0/24, 10.0.6.0/24)
+- **Private Subnets**: 2 AZs (10.0.10.0/24, 10.0.11.0/24)
+- **Internet Gateway**: Attached for public subnet internet access
+- **NAT Gateway**: Single NAT in first public subnet for private subnet outbound access
 
 #### Security Groups
-- **ALB Security Group**: HTTPS (443), HTTP (80) from internet
-- **ECS Security Group**: Port 8000 from ALB only
-- **RDS Security Group**: Port 5432 from ECS only
-- **Redis Security Group**: Port 6379 from ECS only
+- **ALB Security Group**: HTTPS (443), HTTP (80) from internet (0.0.0.0/0)
+- **ECS Security Group**: Port 80 from ALB security group only
+- **RDS Security Group**: Port 5432 from ECS security group only  
+- **Redis Security Group**: Port 6379 from ECS security group only
+
+#### SSL/TLS Configuration
+- **Domain**: breiq.online (Route 53 hosted zone)
+- **SSL Certificate**: AWS Certificate Manager with DNS validation
+- **Load Balancer**: HTTPS listener (443) with HTTP→HTTPS redirect (80)
+- **Security Policy**: ELBSecurityPolicy-TLS-1-2-2017-01
 
 ### 2.3 Content Delivery Network
 
@@ -731,37 +750,50 @@ apm.setCustomContext({
 
 ---
 
-## 7. Deployment Pipeline
+## 7. Deployment Pipeline (Current Implementation)
 
 ### 7.1 CI/CD Workflow
 
-#### Infrastructure Deployment
+#### GitHub Actions Pipeline
 ```mermaid
 graph LR
-    A[Code Push] --> B[Terraform Validate]
-    B --> C[Terraform Plan]
-    C --> D[Manual Approval]
-    D --> E[Terraform Apply]
-    E --> F[Health Checks]
-    F --> G[Notify Team]
+    A[Git Push to main] --> B[Checkout Submodules]
+    B --> C[Build Docker Image]
+    C --> D[Push to ECR]
+    D --> E[Update ECS Service]
+    E --> F[Wait for Stable]
+    F --> G[Health Check]
+    G --> H[✅ Telegram Success]
     
-    B --> H[PR Comment with Plan]
-    F --> I[Rollback on Failure]
+    A --> I[🚀 Telegram Start]
+    F --> J[❌ Telegram Failure]
+    
+    subgraph "Docker Build Process"
+        C1[webdevops/php-nginx:8.2-alpine]
+        C2[Copy Laravel App]
+        C3[Composer Install]
+        C4[Laravel Cache Optimization]
+        C1 --> C2 --> C3 --> C4
+    end
 ```
 
-#### Application Deployment
+#### Infrastructure Deployment (Terraform)
 ```mermaid
 graph LR
-    A[Infrastructure Ready] --> B[Build Docker Images]
-    B --> C[Push to ECR]
-    C --> D[Update ECS Services]
-    D --> E[Blue-Green Deployment]
-    E --> F[Health Checks]
-    F --> G[Route Traffic]
-    G --> H[Notify Success]
+    A[Terraform Code] --> B[terraform plan]
+    B --> C[Manual Review]
+    C --> D[terraform apply]
+    D --> E[AWS Resources Created]
+    E --> F[Output Values]
     
-    F --> I[Rollback on Failure]
-    I --> J[Notify Failure]
+    subgraph "AWS Resources"
+        E1[VPC + Networking]
+        E2[ECS Cluster]
+        E3[RDS Database]
+        E4[Load Balancer]
+        E5[Route 53 + SSL]
+        E1 --> E2 --> E3 --> E4 --> E5
+    end
 ```
 
 ### 7.2 Environment Strategy
@@ -1169,34 +1201,50 @@ Escalation Timeline:
 
 ---
 
-## 🔧 Infrastructure Cost Analysis
+## 🔧 Infrastructure Cost Analysis (Current Implementation)
 
-### Cost Breakdown (Monthly)
+### Cost Breakdown (Monthly Estimates)
 
-#### Production Environment
+#### Production Environment - Current Setup
 ```yaml
-Compute (ECS Fargate): $2,400
-  - 10 tasks × 2 vCPU × 4GB × $0.04048/hour × 730 hours
+Compute (ECS Fargate): ~$70
+  - 1 task × 512 CPU × 1GB × $0.04048/hour × 730 hours
+  - Auto-scaling: 1-10 tasks based on demand
 
-Database (RDS): $1,200
-  - r6g.xlarge × $0.504/hour × 730 hours
-  - Read replicas: $800 additional
+Database (RDS PostgreSQL): ~$45
+  - db.t4g.medium × $0.064/hour × 730 hours
+  - Single-AZ deployment (no Multi-AZ currently)
+  - 20GB GP3 storage with auto-scaling to 100GB
 
-Cache (ElastiCache): $600
-  - 3 × cache.r6g.xlarge × $0.274/hour × 730 hours
+Cache (ElastiCache Redis): ~$20  
+  - 1 × cache.t4g.micro × $0.027/hour × 730 hours
+  - Single node deployment
 
-Storage (S3): $800
-  - 50TB video storage × $0.023/GB
-  - Data transfer out: $500/month
+Storage (S3): ~$25
+  - 1TB video storage × $0.023/GB
+  - Minimal data transfer initially
+  - Lifecycle policies: IA after 90 days
 
-CDN (CloudFront): $400
-  - Data transfer out: 100TB × $0.085/GB (global)
-
-Load Balancer: $30
+Load Balancer: ~$20
   - Application Load Balancer × $0.0225/hour × 730 hours
+  - Minimal data processing charges
 
-Total Monthly Cost: ~$6,230
-Annual Cost: ~$74,760
+Route 53 & SSL: ~$5
+  - Hosted zone: $0.50/month
+  - DNS queries: ~$2-3/month  
+  - SSL certificate: Free via ACM
+
+VPC & Networking: ~$45
+  - NAT Gateway: $0.045/hour × 730 hours = $33
+  - Data processing: ~$12/month
+
+Total Current Monthly Cost: ~$230
+Annual Cost: ~$2,760
+
+Scaling Projections:
+- 10x users: ~$500/month
+- 100x users: ~$1,500/month  
+- 1000x users: ~$5,000/month
 ```
 
 #### Cost Optimization Strategies
@@ -1317,6 +1365,71 @@ This architecture provides a solid foundation for scaling to millions of users w
 
 ---
 
-*Documentation last updated: $(date)*
-*Version: 1.0.0*
+## 📋 Current Deployment Status
+
+### ✅ Completed Infrastructure
+- **AWS Account**: Personal account with full access
+- **Region**: us-east-1 (primary)
+- **Domain**: breiq.online with Route 53 DNS management
+- **SSL**: ACM certificate with automatic DNS validation
+- **Network**: VPC with public/private subnets, NAT Gateway
+- **Compute**: ECS Fargate with auto-scaling (1-10 tasks)
+- **Database**: RDS PostgreSQL 15.8 (db.t4g.medium, 20GB)
+- **Cache**: ElastiCache Redis 7.0 (cache.t4g.micro)
+- **Storage**: S3 bucket with CORS and lifecycle policies
+- **Load Balancer**: ALB with HTTPS termination and HTTP redirect
+- **Monitoring**: CloudWatch logs and metrics
+- **CI/CD**: GitHub Actions with Telegram notifications
+
+### 🔧 Current Configuration
+```yaml
+# ECS Task Definition
+CPU: 512 units
+Memory: 1024 MB  
+Container Port: 80
+Health Check: /api/health endpoint
+Environment Variables: Managed via Terraform
+
+# Database
+Engine: PostgreSQL 15.8
+Instance: db.t4g.medium
+Storage: 20GB GP3 (auto-scaling to 100GB)
+Backup: 7-day retention
+Security: Private subnets only
+
+# Load Balancer  
+Type: Application Load Balancer
+Listeners: HTTP (80) → HTTPS (443)
+SSL Policy: ELBSecurityPolicy-TLS-1-2-2017-01
+Health Check: /api/health with 200 response
+
+# Domain Configuration
+Domain: breiq.online
+DNS: Route 53 hosted zone (Z028896730DWDKFB5D7JC)
+SSL: AWS Certificate Manager (DNS validated)
+Endpoints:
+  - https://breiq.online (main site)
+  - https://api.breiq.online (API endpoint)
+```
+
+### 🚀 Next Steps After Domain Migration
+1. **Update nameservers at Hetzner** → AWS Route 53 nameservers
+2. **Wait for DNS propagation** (15-48 hours)
+3. **SSL certificate validation** will complete automatically  
+4. **Test HTTPS endpoints** once DNS propagates
+5. **Configure Flutter app** to use production API
+6. **Deploy mobile app** to app stores
+
+### 📞 Support & Maintenance
+- **GitHub Repository**: Private submodules with GitHub Actions
+- **Infrastructure as Code**: Terraform in `/terraform` directory  
+- **Environment Variables**: Managed via GitHub Secrets
+- **Monitoring**: CloudWatch dashboards and alarms
+- **Backups**: Automated database backups with 7-day retention
+- **Security**: WAF-ready, security groups, encrypted storage
+
+---
+
+*Documentation last updated: September 7, 2025*
+*Version: 2.0.0 - AWS Production Deployment*
 *Maintainer: Breiq Engineering Team*

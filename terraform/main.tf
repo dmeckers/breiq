@@ -458,6 +458,53 @@ resource "aws_iam_role_policy" "ecs_exec_policy" {
   })
 }
 
+# S3 permissions for ECS task
+resource "aws_iam_role_policy" "ecs_s3_policy" {
+  name = "${var.project_name}-${var.environment}-ecs-s3-policy"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.videos.arn,
+          "${aws_s3_bucket.videos.arn}/*",
+          aws_s3_bucket.processed_videos.arn,
+          "${aws_s3_bucket.processed_videos.arn}/*",
+          aws_s3_bucket.thumbnails.arn,
+          "${aws_s3_bucket.thumbnails.arn}/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = [
+          aws_lambda_function.video_processor.arn
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudfront:CreateInvalidation"
+        ]
+        Resource = [
+          aws_cloudfront_distribution.media_distribution.arn
+        ]
+      }
+    ]
+  })
+}
+
 # ECS Task Definition
 resource "aws_ecs_task_definition" "main" {
   family                   = "${var.project_name}-${var.environment}-backend"
@@ -526,6 +573,14 @@ resource "aws_ecs_task_definition" "main" {
           value = "redis"
         },
         {
+          name  = "SESSION_DRIVER"
+          value = "redis"
+        },
+        {
+          name  = "REDIS_CLIENT"
+          value = "phpredis"
+        },
+        {
           name  = "REDIS_HOST"
           value = aws_elasticache_cluster.main.cache_nodes[0].address
         },
@@ -534,8 +589,60 @@ resource "aws_ecs_task_definition" "main" {
           value = "6379"
         },
         {
+          name  = "REDIS_PASSWORD"
+          value = ""
+        },
+        {
+          name  = "REDIS_PREFIX"
+          value = "breiq_production_cache_"
+        },
+        {
+          name  = "FILESYSTEM_DISK"
+          value = "s3"
+        },
+        {
+          name  = "AWS_DEFAULT_REGION"
+          value = var.aws_region
+        },
+        {
+          name  = "AWS_BUCKET"
+          value = aws_s3_bucket.videos.bucket
+        },
+        {
+          name  = "AWS_URL"
+          value = ""
+        },
+        {
+          name  = "AWS_ENDPOINT"
+          value = ""
+        },
+        {
+          name  = "AWS_USE_PATH_STYLE_ENDPOINT"
+          value = "false"
+        },
+        {
           name  = "LOG_CHANNEL"
           value = "errorlog"
+        },
+        {
+          name  = "MEDIA_PROCESSED_BUCKET"
+          value = aws_s3_bucket.processed_videos.bucket
+        },
+        {
+          name  = "MEDIA_THUMBNAILS_BUCKET"
+          value = aws_s3_bucket.thumbnails.bucket
+        },
+        {
+          name  = "CLOUDFRONT_URL"
+          value = "https://${aws_cloudfront_distribution.media_distribution.domain_name}"
+        },
+        {
+          name  = "MEDIA_DOMAIN_URL"
+          value = "https://${aws_cloudfront_distribution.media_distribution.domain_name}"
+        },
+        {
+          name  = "LAMBDA_VIDEO_PROCESSOR"
+          value = aws_lambda_function.video_processor.function_name
         }
       ]
       
@@ -597,7 +704,7 @@ resource "aws_ecs_service" "main" {
   }
 
   depends_on = [
-    aws_lb_listener.main,
+    aws_lb_listener.https,
     aws_iam_role_policy_attachment.ecs_task_execution_role_policy,
   ]
 
@@ -648,14 +755,115 @@ resource "aws_lb_target_group" "main" {
   }
 }
 
-resource "aws_lb_listener" "main" {
+# HTTP listener - redirect to HTTPS
+resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"
 
   default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+# HTTPS listener
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  certificate_arn   = aws_acm_certificate_validation.main.certificate_arn
+
+  default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.main.arn
+  }
+}
+
+# ====================================
+# ROUTE 53 DNS AND SSL
+# ====================================
+
+# Route 53 hosted zone
+resource "aws_route53_zone" "main" {
+  name = var.domain_name
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-hosted-zone"
+  }
+}
+
+# SSL Certificate (must be in us-east-1 for ALB)
+resource "aws_acm_certificate" "main" {
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+  
+  subject_alternative_names = [
+    "*.${var.domain_name}"
+  ]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-cert"
+  }
+}
+
+# Certificate validation records
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = aws_route53_zone.main.zone_id
+}
+
+# Certificate validation
+resource "aws_acm_certificate_validation" "main" {
+  certificate_arn         = aws_acm_certificate.main.arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+}
+
+# A record pointing to load balancer
+resource "aws_route53_record" "main" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = var.domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = true
+  }
+}
+
+# API subdomain record
+resource "aws_route53_record" "api" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = "api.${var.domain_name}"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = true
   }
 }
 
@@ -702,5 +910,24 @@ output "deployment_info" {
     environment = var.environment
     project     = var.project_name
     timestamp   = timestamp()
+  }
+}
+
+output "route53_nameservers" {
+  description = "Route 53 nameservers for domain configuration"
+  value       = aws_route53_zone.main.name_servers
+}
+
+output "ssl_certificate_arn" {
+  description = "SSL certificate ARN"
+  value       = aws_acm_certificate.main.arn
+}
+
+output "domain_urls" {
+  description = "Domain URLs for the application"
+  value = {
+    main_domain = "https://${var.domain_name}"
+    api_domain  = "https://api.${var.domain_name}"
+    health_check = "https://api.${var.domain_name}/api/health"
   }
 }
