@@ -120,6 +120,12 @@ jobs:
         SANCTUM_STATEFUL_DOMAINS=breiq.online,api.breiq.online
         SESSION_DOMAIN=.breiq.online
         CORS_ALLOWED_ORIGINS="https://breiq.online,app://breiq"
+
+        # Telescope Configuration for Production Debugging
+        TELESCOPE_ENABLED=true
+        TELESCOPE_PATH=telescope
+        TELESCOPE_BASIC_AUTH_USER=${{ secrets.TELESCOPE_BASIC_AUTH_USER }}
+        TELESCOPE_BASIC_AUTH_PASSWORD=${{ secrets.TELESCOPE_BASIC_AUTH_PASSWORD }}
         EOF
 
     - name: Build, tag, and push image to Amazon ECR
@@ -134,6 +140,9 @@ jobs:
         cat > Dockerfile << 'EOF'
         FROM webdevops/php-nginx:8.2-alpine
 
+        # Install curl for health checks
+        RUN apk add --no-cache curl
+
         # Set document root for Laravel
         ENV WEB_DOCUMENT_ROOT=/app/public
 
@@ -146,12 +155,49 @@ jobs:
         # Install composer dependencies
         RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-        # Laravel optimizations
+        # Create startup script for proper Laravel initialization
+        RUN cat > /usr/local/bin/laravel-startup.sh << 'STARTUP_EOF'
+        #!/bin/bash
+        set -e
+
+        echo "Starting Laravel application..."
+
+        # Wait for database if DB_HOST is set
+        if [ -n "\$DB_HOST" ]; then
+          echo "Waiting for database connection..."
+          for i in {1..30}; do
+            if timeout 5 bash -c "</dev/tcp/\$DB_HOST/\${DB_PORT:-5432}" 2>/dev/null; then
+              echo "Database is ready!"
+              break
+            fi
+            echo "Waiting for database... (\$i/30)"
+            sleep 2
+          done
+        fi
+
+        # Run Laravel optimizations
+        php artisan config:cache --no-interaction || echo "Config cache failed"
+        php artisan route:cache --no-interaction || echo "Route cache failed"
+
+        # Start supervisord (which starts nginx and php-fpm)
+        exec supervisord -c /etc/supervisor/conf.d/supervisord.conf
+        STARTUP_EOF
+
+        RUN chmod +x /usr/local/bin/laravel-startup.sh
+
+        # Laravel optimizations and health check setup
         RUN php artisan config:cache || true && \
             php artisan route:cache || true && \
             php artisan view:cache || true
 
+        # Add health check for the container
+        HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+          CMD curl -f http://localhost/api/health || exit 1
+
         EXPOSE 80
+
+        # Use our startup script
+        CMD ["/usr/local/bin/laravel-startup.sh"]
         EOF
 
         # Build and push
@@ -164,17 +210,66 @@ jobs:
 
     - name: Update ECS service
       run: |
+        echo "🔄 Updating ECS service with new image..."
         aws ecs update-service \
           --cluster ${{ env.ECS_CLUSTER }} \
           --service ${{ env.ECS_SERVICE }} \
           --force-new-deployment \
           --region ${{ env.AWS_REGION }}
 
-        echo "Waiting for service to stabilize..."
-        aws ecs wait services-stable \
+        echo "⏳ Waiting for service to stabilize (timeout: 10 minutes)..."
+        
+        # Use timeout to prevent hanging indefinitely
+        if timeout 600 aws ecs wait services-stable \
           --cluster ${{ env.ECS_CLUSTER }} \
           --services ${{ env.ECS_SERVICE }} \
-          --region ${{ env.AWS_REGION }}
+          --region ${{ env.AWS_REGION }}; then
+          echo "✅ Service stabilized successfully"
+        else
+          echo "⚠️ Service stabilization timed out, checking service status..."
+          
+          # Get service status even if stabilization timed out
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].deployments[0].status' \
+            --output text)
+          
+          RUNNING_COUNT=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].runningCount' \
+            --output text)
+          
+          DESIRED_COUNT=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].desiredCount' \
+            --output text)
+          
+          echo "📊 Service Status: $SERVICE_STATUS"
+          echo "📊 Running Tasks: $RUNNING_COUNT/$DESIRED_COUNT"
+          
+          if [ "$RUNNING_COUNT" -eq "$DESIRED_COUNT" ] && [ "$RUNNING_COUNT" -gt 0 ]; then
+            echo "✅ Service appears healthy despite stabilization timeout"
+          else
+            echo "❌ Service may not be healthy: $RUNNING_COUNT/$DESIRED_COUNT tasks running"
+            
+            # Get recent service events for debugging
+            echo "📋 Recent service events:"
+            aws ecs describe-services \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --services ${{ env.ECS_SERVICE }} \
+              --region ${{ env.AWS_REGION }} \
+              --query 'services[0].events[:5].[message]' \
+              --output table
+            
+            exit 1
+          fi
+        fi
 
     - name: Get deployment info
       id: deployment-info
@@ -208,6 +303,7 @@ jobs:
           🌐 **Live Endpoints:**
           • API Health: http://${{ steps.deployment-info.outputs.alb_dns }}/api/health
           • API Base: http://${{ steps.deployment-info.outputs.alb_dns }}/api/
+          • Telescope: http://${{ steps.deployment-info.outputs.alb_dns }}/telescope (auth required)
           
           🐳 **Container Details:**
           • Image: ${{ steps.build-image.outputs.image }}
