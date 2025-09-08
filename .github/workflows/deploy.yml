@@ -155,64 +155,27 @@ jobs:
         # Install composer dependencies
         RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-        # Create startup script for proper Laravel initialization
-        RUN echo '#!/bin/bash' > /usr/local/bin/laravel-startup.sh && \
-            echo 'set -e' >> /usr/local/bin/laravel-startup.sh && \
-            echo '' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'echo "[STARTUP] Starting Laravel application..."' >> /usr/local/bin/laravel-startup.sh && \
-            echo '' >> /usr/local/bin/laravel-startup.sh && \
-            echo '# Start nginx and php-fpm first' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'echo "[STARTUP] Starting web services..."' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'supervisord -c /etc/supervisor/conf.d/supervisord.conf &' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'SUPERVISOR_PID=$!' >> /usr/local/bin/laravel-startup.sh && \
-            echo '' >> /usr/local/bin/laravel-startup.sh && \
-            echo '# Wait for nginx to start' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'echo "[STARTUP] Waiting for nginx to start..."' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'for i in {1..30}; do' >> /usr/local/bin/laravel-startup.sh && \
-            echo '  if curl -f http://localhost/ >/dev/null 2>&1; then' >> /usr/local/bin/laravel-startup.sh && \
-            echo '    echo "[STARTUP] Nginx is responding!"' >> /usr/local/bin/laravel-startup.sh && \
-            echo '    break' >> /usr/local/bin/laravel-startup.sh && \
-            echo '  fi' >> /usr/local/bin/laravel-startup.sh && \
-            echo '  echo "[STARTUP] Waiting for nginx... ($i/30)"' >> /usr/local/bin/laravel-startup.sh && \
-            echo '  sleep 2' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'done' >> /usr/local/bin/laravel-startup.sh && \
-            echo '' >> /usr/local/bin/laravel-startup.sh && \
-            echo '# Test health endpoint' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'echo "[STARTUP] Testing health endpoint..."' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'for i in {1..60}; do' >> /usr/local/bin/laravel-startup.sh && \
-            echo '  if curl -f http://localhost/api/health >/dev/null 2>&1; then' >> /usr/local/bin/laravel-startup.sh && \
-            echo '    echo "[STARTUP] Health endpoint is responding!"' >> /usr/local/bin/laravel-startup.sh && \
-            echo '    break' >> /usr/local/bin/laravel-startup.sh && \
-            echo '  fi' >> /usr/local/bin/laravel-startup.sh && \
-            echo '  echo "[STARTUP] Health endpoint not ready... ($i/60)"' >> /usr/local/bin/laravel-startup.sh && \
-            echo '  sleep 2' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'done' >> /usr/local/bin/laravel-startup.sh && \
-            echo '' >> /usr/local/bin/laravel-startup.sh && \
-            echo '# Run Laravel optimizations after services are up' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'echo "[STARTUP] Running Laravel optimizations..."' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'php artisan config:cache --no-interaction || echo "[ERROR] Config cache failed"' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'php artisan route:cache --no-interaction || echo "[ERROR] Route cache failed"' >> /usr/local/bin/laravel-startup.sh && \
-            echo '' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'echo "[STARTUP] Laravel application is ready!"' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'echo "[STARTUP] Health check: http://localhost/api/health"' >> /usr/local/bin/laravel-startup.sh && \
-            echo '' >> /usr/local/bin/laravel-startup.sh && \
-            echo '# Wait for supervisor process' >> /usr/local/bin/laravel-startup.sh && \
-            echo 'wait $SUPERVISOR_PID' >> /usr/local/bin/laravel-startup.sh && \
-            chmod +x /usr/local/bin/laravel-startup.sh
+        # Create Laravel startup script that works with webdevops image
+        RUN echo '#!/bin/bash' > /app/laravel-init.sh && \
+            echo 'set -e' >> /app/laravel-init.sh && \
+            echo 'echo "[INIT] Initializing Laravel application..."' >> /app/laravel-init.sh && \
+            echo 'php artisan config:cache --no-interaction || echo "[ERROR] Config cache failed"' >> /app/laravel-init.sh && \
+            echo 'php artisan route:cache --no-interaction || echo "[ERROR] Route cache failed"' >> /app/laravel-init.sh && \
+            echo 'echo "[INIT] Laravel initialization complete!"' >> /app/laravel-init.sh && \
+            chmod +x /app/laravel-init.sh
 
-        # Laravel optimizations and health check setup
-        RUN php artisan config:cache || true && \
-            php artisan route:cache || true && \
-            php artisan view:cache || true
+        # Run Laravel optimizations during build
+        RUN /app/laravel-init.sh
 
         # Add health check for the container
-        HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+        HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
           CMD curl -f http://localhost/api/health || exit 1
 
         EXPOSE 80
 
-        # Use our startup script
-        CMD ["/usr/local/bin/laravel-startup.sh"]
+        # Use webdevops default entrypoint (supervisord with nginx + php-fpm)
+        # This should resolve the supervisor config file not found error
+        CMD ["/entrypoint", "supervisord"]
         EOF
 
         # Build and push
