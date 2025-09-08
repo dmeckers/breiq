@@ -156,34 +156,31 @@ jobs:
         RUN composer install --no-dev --optimize-autoloader --no-interaction
 
         # Create startup script for proper Laravel initialization
-        RUN cat > /usr/local/bin/laravel-startup.sh << 'STARTUP_EOF'
-        #!/bin/bash
-        set -e
-
-        echo "Starting Laravel application..."
-
-        # Wait for database if DB_HOST is set
-        if [ -n "\$DB_HOST" ]; then
-          echo "Waiting for database connection..."
-          for i in {1..30}; do
-            if timeout 5 bash -c "</dev/tcp/\$DB_HOST/\${DB_PORT:-5432}" 2>/dev/null; then
-              echo "Database is ready!"
-              break
-            fi
-            echo "Waiting for database... (\$i/30)"
-            sleep 2
-          done
-        fi
-
-        # Run Laravel optimizations
-        php artisan config:cache --no-interaction || echo "Config cache failed"
-        php artisan route:cache --no-interaction || echo "Route cache failed"
-
-        # Start supervisord (which starts nginx and php-fpm)
-        exec supervisord -c /etc/supervisor/conf.d/supervisord.conf
-        STARTUP_EOF
-
-        RUN chmod +x /usr/local/bin/laravel-startup.sh
+        RUN echo '#!/bin/bash' > /usr/local/bin/laravel-startup.sh && \
+            echo 'set -e' >> /usr/local/bin/laravel-startup.sh && \
+            echo '' >> /usr/local/bin/laravel-startup.sh && \
+            echo 'echo "Starting Laravel application..."' >> /usr/local/bin/laravel-startup.sh && \
+            echo '' >> /usr/local/bin/laravel-startup.sh && \
+            echo '# Wait for database if DB_HOST is set' >> /usr/local/bin/laravel-startup.sh && \
+            echo 'if [ -n "$DB_HOST" ]; then' >> /usr/local/bin/laravel-startup.sh && \
+            echo '  echo "Waiting for database connection..."' >> /usr/local/bin/laravel-startup.sh && \
+            echo '  for i in {1..30}; do' >> /usr/local/bin/laravel-startup.sh && \
+            echo '    if timeout 5 bash -c "</dev/tcp/$DB_HOST/${DB_PORT:-5432}" 2>/dev/null; then' >> /usr/local/bin/laravel-startup.sh && \
+            echo '      echo "Database is ready!"' >> /usr/local/bin/laravel-startup.sh && \
+            echo '      break' >> /usr/local/bin/laravel-startup.sh && \
+            echo '    fi' >> /usr/local/bin/laravel-startup.sh && \
+            echo '    echo "Waiting for database... ($i/30)"' >> /usr/local/bin/laravel-startup.sh && \
+            echo '    sleep 2' >> /usr/local/bin/laravel-startup.sh && \
+            echo '  done' >> /usr/local/bin/laravel-startup.sh && \
+            echo 'fi' >> /usr/local/bin/laravel-startup.sh && \
+            echo '' >> /usr/local/bin/laravel-startup.sh && \
+            echo '# Run Laravel optimizations' >> /usr/local/bin/laravel-startup.sh && \
+            echo 'php artisan config:cache --no-interaction || echo "Config cache failed"' >> /usr/local/bin/laravel-startup.sh && \
+            echo 'php artisan route:cache --no-interaction || echo "Route cache failed"' >> /usr/local/bin/laravel-startup.sh && \
+            echo '' >> /usr/local/bin/laravel-startup.sh && \
+            echo '# Start supervisord (which starts nginx and php-fpm)' >> /usr/local/bin/laravel-startup.sh && \
+            echo 'exec supervisord -c /etc/supervisor/conf.d/supervisord.conf' >> /usr/local/bin/laravel-startup.sh && \
+            chmod +x /usr/local/bin/laravel-startup.sh
 
         # Laravel optimizations and health check setup
         RUN php artisan config:cache || true && \
