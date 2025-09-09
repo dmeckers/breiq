@@ -59,24 +59,24 @@ jobs:
         # Application
         APP_NAME="Breiq API"
         APP_ENV=production
-        APP_KEY=${{ secrets.APP_KEY }}
+        APP_KEY="${{ secrets.APP_KEY }}"
         APP_DEBUG=false
         APP_TIMEZONE=UTC
-        APP_URL=${{ secrets.APP_URL }}
+        APP_URL="${{ secrets.APP_URL }}"
 
         # Database - AWS RDS PostgreSQL
         DB_CONNECTION=pgsql
-        DB_HOST=${{ secrets.DB_HOST }}
+        DB_HOST="${{ secrets.DB_HOST }}"
         DB_PORT=5432
         DB_DATABASE=breiq_production
         DB_USERNAME=breiq_admin
-        DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+        DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
 
         # Cache & Sessions - AWS ElastiCache Redis
         CACHE_STORE=redis
         SESSION_DRIVER=redis
         REDIS_CLIENT=phpredis
-        REDIS_HOST=${{ secrets.REDIS_HOST }}
+        REDIS_HOST="${{ secrets.REDIS_HOST }}"
         REDIS_PASSWORD=
         REDIS_PORT=6379
         REDIS_PREFIX=breiq_production_cache_
@@ -89,8 +89,8 @@ jobs:
 
         # File Storage - AWS S3
         FILESYSTEM_DISK=s3
-        AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
+        AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
         AWS_DEFAULT_REGION=us-east-1
         AWS_BUCKET=breiq-production-videos
         AWS_URL=
@@ -103,15 +103,14 @@ jobs:
         LOG_LEVEL=error
 
         # Google OAuth
-        GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-        GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+        GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}"
+        GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}"
         GOOGLE_REDIRECT_URI="${APP_URL}/auth/google/callback"
 
         # Firebase Cloud Messaging
-        FCM_SERVER_KEY=${{ secrets.FCM_SERVER_KEY }}
-        FCM_SENDER_ID=${{ secrets.FCM_SENDER_ID }}
-        FCM_PROJECT_ID=${{ secrets.FCM_PROJECT_ID }}
-        FCM_SERVICE_ACCOUNT_JSON='${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}'
+        FCM_SERVER_KEY="${{ secrets.FCM_SERVER_KEY }}"
+        FCM_SENDER_ID="${{ secrets.FCM_SENDER_ID }}"
+        FCM_PROJECT_ID="${{ secrets.FCM_PROJECT_ID }}"
 
         # Video Processing Configuration
         MAX_VIDEO_SIZE_MB=100
@@ -126,8 +125,8 @@ jobs:
         # Telescope Configuration for Production Debugging
         TELESCOPE_ENABLED=true
         TELESCOPE_PATH=telescope
-        TELESCOPE_BASIC_AUTH_USER=${{ secrets.TELESCOPE_BASIC_AUTH_USER }}
-        TELESCOPE_BASIC_AUTH_PASSWORD=${{ secrets.TELESCOPE_BASIC_AUTH_PASSWORD }}
+        TELESCOPE_BASIC_AUTH_USER="${{ secrets.TELESCOPE_BASIC_AUTH_USER }}"
+        TELESCOPE_BASIC_AUTH_PASSWORD="${{ secrets.TELESCOPE_BASIC_AUTH_PASSWORD }}"
         EOF
 
     - name: Build, tag, and push image to Amazon ECR
