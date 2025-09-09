@@ -159,14 +159,14 @@ jobs:
         RUN echo '#!/bin/bash' > /app/laravel-init.sh && \
             echo 'set -e' >> /app/laravel-init.sh && \
             echo 'echo "[INIT] Initializing Laravel application..."' >> /app/laravel-init.sh && \
-            echo 'export TELESCOPE_ENABLED=false' >> /app/laravel-init.sh && \
+            echo 'export TELESCOPE_ENABLED=true' >> /app/laravel-init.sh && \
             echo 'php artisan config:cache --no-interaction || echo "[ERROR] Config cache failed"' >> /app/laravel-init.sh && \
             echo 'php artisan route:cache --no-interaction || echo "[ERROR] Route cache failed"' >> /app/laravel-init.sh && \
             echo 'echo "[INIT] Laravel initialization complete!"' >> /app/laravel-init.sh && \
             chmod +x /app/laravel-init.sh
 
-        # Run Laravel optimizations during build with Telescope disabled
-        RUN TELESCOPE_ENABLED=false /app/laravel-init.sh
+        # Run Laravel optimizations during build with Telescope enabled
+        RUN TELESCOPE_ENABLED=true /app/laravel-init.sh
 
         # Add health check for the container
         HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
