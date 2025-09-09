@@ -152,6 +152,9 @@ jobs:
         # Copy application files
         COPY --chown=application:application . /app
 
+        # Copy production environment file to .env (Laravel's default)
+        RUN cp /app/.env.production /app/.env
+
         # Install composer dependencies
         RUN composer install --no-dev --optimize-autoloader --no-interaction
 
