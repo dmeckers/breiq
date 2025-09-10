@@ -83,7 +83,7 @@ jobs:
 
         # Queue - AWS SQS
         QUEUE_CONNECTION=sqs
-        SQS_PREFIX=https://queue.amazonaws.com/${{ secrets.AWS_ACCOUNT_ID }}
+        SQS_PREFIX=https://sqs.us-east-1.amazonaws.com/021891607194
         SQS_QUEUE=breiq-production-queue
         SQS_SUFFIX=
 
