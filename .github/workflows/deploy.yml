@@ -102,6 +102,11 @@ jobs:
         LOG_STACK=single
         LOG_LEVEL=error
 
+        # Sentry Error Tracking
+        SENTRY_LARAVEL_DSN="${{ secrets.SENTRY_LARAVEL_DSN }}"
+        SENTRY_SEND_DEFAULT_PII=true
+        SENTRY_TRACES_SAMPLE_RATE=1.0
+
         # Google OAuth
         GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}"
         GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}"
