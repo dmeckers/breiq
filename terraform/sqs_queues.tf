@@ -95,7 +95,7 @@ output "sqs_region" {
 
 output "sqs_prefix" {
   description = "SQS URL prefix for Laravel configuration"
-  value       = "https://sqs.${var.aws_region}.amazonaws.com/${data.aws_caller_identity.current.account_id}"
+  value       = "https://queue.amazonaws.com/${data.aws_caller_identity.current.account_id}"
 }
 
 # Data source to get current AWS account ID
