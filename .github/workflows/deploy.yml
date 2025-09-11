@@ -97,9 +97,9 @@ jobs:
           AWS_ENDPOINT=
           AWS_USE_PATH_STYLE_ENDPOINT=false
 
-          # Logging
-          LOG_CHANNEL=errorlog
-          LOG_STACK=single
+          # Logging - Send to both error log AND Sentry
+          LOG_CHANNEL=stack
+          LOG_STACK=errorlog,sentry
           LOG_LEVEL=error
 
           # Sentry Error Tracking
