@@ -57,6 +57,46 @@ resource "aws_ecs_task_definition" "queue_worker" {
         {
           name = "AWS_DEFAULT_REGION"
           value = var.aws_region
+        },
+        {
+          name = "DB_CONNECTION"
+          value = "pgsql"
+        },
+        {
+          name = "DB_HOST"
+          value = aws_db_instance.main.endpoint
+        },
+        {
+          name = "DB_PORT"
+          value = "5432"
+        },
+        {
+          name = "DB_DATABASE"
+          value = "breiq_production"
+        },
+        {
+          name = "DB_USERNAME"
+          value = "breiq_admin"
+        },
+        {
+          name = "DB_PASSWORD"
+          value = aws_db_instance.main.password
+        },
+        {
+          name = "CACHE_STORE"
+          value = "redis"
+        },
+        {
+          name = "REDIS_HOST"
+          value = aws_elasticache_cluster.main.cache_nodes.0.address
+        },
+        {
+          name = "REDIS_PORT"
+          value = "6379"
+        },
+        {
+          name = "REDIS_PREFIX"
+          value = "breiq_production_cache_"
         }
       ]
 
