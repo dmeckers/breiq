@@ -89,8 +89,6 @@ jobs:
 
           # File Storage - AWS S3
           FILESYSTEM_DISK=s3
-          AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
-          AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
           AWS_DEFAULT_REGION=us-east-1
           AWS_BUCKET=breiq-production-videos-bh3xujb8
           AWS_URL=
