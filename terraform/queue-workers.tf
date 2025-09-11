@@ -108,7 +108,6 @@ resource "aws_service_discovery_service" "queue_worker" {
     }
   }
 
-  health_check_grace_period_seconds = 30
   
   tags = {
     Name = "${var.project_name}-${var.environment}-queue-worker-discovery"
