@@ -41,6 +41,22 @@ resource "aws_ecs_task_definition" "queue_worker" {
         {
           name  = "LOG_CHANNEL" 
           value = "stderr"
+        },
+        {
+          name = "QUEUE_CONNECTION"
+          value = "sqs"
+        },
+        {
+          name = "SQS_PREFIX"
+          value = "https://sqs.${var.aws_region}.amazonaws.com/${data.aws_caller_identity.current.account_id}"
+        },
+        {
+          name = "SQS_QUEUE"
+          value = "${var.project_name}-${var.environment}-queue"
+        },
+        {
+          name = "AWS_DEFAULT_REGION"
+          value = var.aws_region
         }
       ]
 
