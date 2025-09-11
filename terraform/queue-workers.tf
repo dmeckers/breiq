@@ -16,12 +16,12 @@ resource "aws_ecs_task_definition" "queue_worker" {
       # Override default command to run queue worker only
       command = [
         "php", "/app/artisan", "queue:work", "sqs", 
-        "--queue=breiq-production-queue,breiq-production-ai-moderation", 
+        "--queue=breiq-production-queue", 
         "--sleep=3", 
         "--tries=3", 
-        "--timeout=300", 
+        "--timeout=900", 
         "--verbose",
-        "--memory=512"
+        "--memory=1024"
       ]
       
       logConfiguration = {
