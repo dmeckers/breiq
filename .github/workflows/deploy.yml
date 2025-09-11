@@ -198,8 +198,11 @@ jobs:
 
           EXPOSE 80
 
+          # Disable supervisor queue workers (now handled by dedicated ECS containers)
+          RUN rm -f /opt/docker/etc/supervisor.d/laravel-queue*.conf || true
+          
           # Use webdevops default entrypoint (supervisord with nginx + php-fpm)
-          # This should resolve the supervisor config file not found error
+          # Queue workers now run as separate ECS containers
           CMD ["/entrypoint", "supervisord"]
           EOF
 
