@@ -146,8 +146,8 @@ jobs:
           cat > Dockerfile << 'EOF'
           FROM webdevops/php-nginx:8.2-alpine
 
-          # Install curl for health checks and supervisor
-          RUN apk add --no-cache curl supervisor
+          # Install curl for health checks, supervisor, and ffmpeg for video processing
+          RUN apk add --no-cache curl supervisor ffmpeg
 
           # Set document root for Laravel
           ENV WEB_DOCUMENT_ROOT=/app/public
