@@ -146,8 +146,8 @@ jobs:
           cat > Dockerfile << 'EOF'
           FROM webdevops/php-nginx:8.2-alpine
 
-          # Install curl for health checks
-          RUN apk add --no-cache curl
+          # Install curl for health checks and supervisor
+          RUN apk add --no-cache curl supervisor
 
           # Set document root for Laravel
           ENV WEB_DOCUMENT_ROOT=/app/public
@@ -176,6 +176,21 @@ jobs:
 
           # Run Laravel optimizations during build with Telescope enabled
           RUN TELESCOPE_ENABLED=true /app/laravel-init.sh
+
+          # Create supervisor configuration for queue worker
+          RUN mkdir -p /opt/docker/etc/supervisor.d/ && \
+              echo '[program:laravel-queue-worker]' > /opt/docker/etc/supervisor.d/laravel-queue.conf && \
+              echo 'process_name=%(program_name)s_%(process_num)02d' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
+              echo 'command=php /app/artisan queue:work sqs --sleep=3 --tries=3 --timeout=300' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
+              echo 'autostart=true' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
+              echo 'autorestart=true' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
+              echo 'user=application' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
+              echo 'numprocs=2' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
+              echo 'redirect_stderr=true' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
+              echo 'stdout_logfile=/dev/stdout' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
+              echo 'stdout_logfile_maxbytes=0' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
+              echo 'stderr_logfile=/dev/stderr' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
+              echo 'stderr_logfile_maxbytes=0' >> /opt/docker/etc/supervisor.d/laravel-queue.conf
 
           # Add health check for the container
           HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
