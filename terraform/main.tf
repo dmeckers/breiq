@@ -495,6 +495,18 @@ resource "aws_iam_role_policy" "ecs_s3_policy" {
       {
         Effect = "Allow"
         Action = [
+          "rekognition:StartLabelDetection",
+          "rekognition:GetLabelDetection",
+          "rekognition:DetectModerationLabels",
+          "rekognition:DetectLabels",
+          "rekognition:RecognizeCelebrities",
+          "rekognition:DetectFaces"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "cloudfront:CreateInvalidation"
         ]
         Resource = [
