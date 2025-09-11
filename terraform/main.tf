@@ -371,6 +371,26 @@ resource "aws_s3_bucket_cors_configuration" "videos" {
 }
 
 # ====================================
+# SQS QUEUES
+# ====================================
+
+resource "aws_sqs_queue" "main" {
+  name = "${var.project_name}-${var.environment}-queue"
+  
+  tags = {
+    Name = "${var.project_name}-${var.environment}-queue"
+  }
+}
+
+resource "aws_sqs_queue" "ai_moderation" {
+  name = "${var.project_name}-${var.environment}-ai-moderation"
+  
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ai-moderation"
+  }
+}
+
+# ====================================
 # ECS CLUSTER & SERVICE
 # ====================================
 
@@ -503,6 +523,19 @@ resource "aws_iam_role_policy" "ecs_s3_policy" {
           "rekognition:DetectFaces"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage",
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes"
+        ]
+        Resource = [
+          aws_sqs_queue.main.arn,
+          aws_sqs_queue.ai_moderation.arn
+        ]
       },
       {
         Effect = "Allow"
@@ -655,6 +688,22 @@ resource "aws_ecs_task_definition" "main" {
         {
           name  = "LAMBDA_VIDEO_PROCESSOR"
           value = aws_lambda_function.video_processor.function_name
+        },
+        {
+          name  = "QUEUE_CONNECTION"
+          value = "sqs"
+        },
+        {
+          name  = "SQS_PREFIX"
+          value = "https://sqs.${var.aws_region}.amazonaws.com/${data.aws_caller_identity.current.account_id}"
+        },
+        {
+          name  = "SQS_QUEUE"
+          value = "${var.project_name}-${var.environment}-queue"
+        },
+        {
+          name  = "SQS_SUFFIX"
+          value = ""
         }
       ]
       
