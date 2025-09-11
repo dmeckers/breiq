@@ -181,7 +181,7 @@ jobs:
           RUN mkdir -p /opt/docker/etc/supervisor.d/ && \
               echo '[program:laravel-queue-worker]' > /opt/docker/etc/supervisor.d/laravel-queue.conf && \
               echo 'process_name=%(program_name)s_%(process_num)02d' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
-              echo 'command=php /app/artisan queue:work sqs --sleep=3 --tries=3 --timeout=300' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
+              echo 'command=php /app/artisan queue:work sqs --queue=breiq-production-ai-moderation,breiq-production-queue --sleep=3 --tries=3 --timeout=300' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
               echo 'autostart=true' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
               echo 'autorestart=true' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
               echo 'user=application' >> /opt/docker/etc/supervisor.d/laravel-queue.conf && \
