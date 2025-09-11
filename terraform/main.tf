@@ -349,6 +349,15 @@ resource "aws_s3_bucket" "videos" {
   }
 }
 
+# Allow ACLs on the videos bucket for Laravel visibility control
+resource "aws_s3_bucket_ownership_controls" "videos" {
+  bucket = aws_s3_bucket.videos.id
+
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
 resource "aws_s3_bucket_public_access_block" "videos" {
   bucket = aws_s3_bucket.videos.id
 
